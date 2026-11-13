@@ -10,6 +10,7 @@ const ui = Object.fromEntries([
 const terrain = document.createElement('canvas');
 let race = null;
 let raceDuration = 0;
+let field = null;
 let elapsed = 0;
 let playing = false;
 let angle = 'map';
@@ -47,12 +48,15 @@ function readRun(raw, name) {
       throw new Error('Invalid recorded position in the ' + name + ' lap.');
     }
   }
+  if (Math.abs(frames[0][0])>1e-5 || Math.abs(frames.at(-1)[0]-raw.time)>1e-4) {
+    throw new Error('Recorded frames do not match the '+name+' lap time.');
+  }
   const speeds = frames.map((frame, i) => {
     const a = frames[Math.max(0, i - 1)];
     const b = frames[Math.min(i + 1, frames.length - 1)];
     return Math.hypot(b[1] - a[1], b[2] - a[2]) / (b[0] - a[0]);
   });
-  return {frames, speeds, time: raw.time, finished: raw.finished};
+  return {frames, speeds, time: raw.time, finished: raw.finished, reason: String(raw.reason || "incomplete")};
 }
 
 function parseRace(data) {
@@ -62,7 +66,7 @@ function parseRace(data) {
   if (data.track.left.length !== data.track.right.length || data.track.centre.length !== data.track.left.length) {
     throw new Error('The track edges must align with the centreline samples.');
   }
-  return {track: data.track, baseline: readRun(data.baseline, 'ghost'), challenger: readRun(data.challenger, 'trained')};
+  return {track: data.track, seed: data.seed, baseline: readRun(data.baseline, 'ghost'), challenger: readRun(data.challenger, 'trained')};
 }
 
 function frameAt(run, time) {
@@ -185,7 +189,7 @@ function rounded(ctx,x,y,w,h,r,colour) {
   ctx.fillStyle=colour;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();
 }
 
-function drawDuck(ctx,sample,ghost) {
+function drawDuck(ctx,sample,ghost,colour=null) {
   const [x,y]=project(sample.x,sample.y);
   ctx.save();ctx.translate(x,y);ctx.rotate(-sample.yaw);
   const size=Math.min(1.2,Math.max(.72,ui.screen.clientWidth/700));
@@ -200,19 +204,159 @@ function drawDuck(ctx,sample,ghost) {
     rounded(ctx,-8,-6.6,12,3,1.2,'#161c1c');
     rounded(ctx,-8,3.6,12,3,1.2,'#161c1c');
     rounded(ctx,-6.5,-4.8,10,9.6,2.6,'#c8b49a');ctx.shadowBlur=0;ctx.shadowOffsetY=0;
-    rounded(ctx,0,-5.7,8.4,11.4,2.3,'#faf5df');
+    rounded(ctx,0,-5.7,8.4,11.4,2.3,colour || '#faf5df');
     rounded(ctx,6.4,-4.9,2.6,9.8,1,'#252e31');
     rounded(ctx,8,-2.2,3.7,4.4,1.2,'#ff9955');
     ctx.fillStyle='#a9edf0';ctx.fillRect(7.5,-3.6,1,1.5);ctx.fillRect(7.5,2.1,1,1.5);
-    ctx.fillStyle='#ef8656';ctx.fillRect(-4.7,-6.1,5.5,1.25);ctx.fillRect(-4.7,4.85,5.5,1.25);
+    ctx.fillStyle=colour || '#ef8656';ctx.fillRect(-4.7,-6.1,5.5,1.25);ctx.fillRect(-4.7,4.85,5.5,1.25);
   }
   ctx.restore();
+}
+
+// Colours identify the same driver on the road, its trail and the results list.
+// Labels and bib numbers also distinguish drivers with similar colours.
+const fieldColours=['#ff986a','#88cfff','#f7d66b','#c6a6ff','#6bdfae','#ffa4ce','#e6e6e1','#a2bcff'];
+
+function compareConditions(a,b) {
+  if(!Number.isInteger(a.seed)||b.seed!==a.seed)return 'different or missing start seed';
+  for(const side of ['centre','left','right']){
+    const points=a.track[side], compared=b.track[side];
+    if(points.length!==compared.length || points.some((p,i)=>
+      p[0]!==compared[i][0] || p[1]!==compared[i][1]))return 'different circuit geometry';
+  }
+  return null;
+}
+
+function drawField(ctx) {
+  const positions=[];
+  if(ui.ghost.checked){
+    const marker=frameAt(race.baseline,elapsed);
+    if(ui.line.checked)trail(ctx,race.baseline,marker,true);
+    drawDuck(ctx,marker,true);
+  }
+  for(const entry of field){
+    if(entry.hidden)continue;
+    const marker=frameAt(entry.run,elapsed);
+    positions.push({entry,marker});
+    if(!ui.line.checked)continue;
+    const frames=entry.run.frames;
+    // A short tail shows the line through the current corner, without covering
+    // the entire road when several drivers share the same path.
+    const tail=frameAt(entry.run,Math.min(elapsed,frames.at(-1)[0])-2.8);
+    ctx.beginPath();
+    ctx.moveTo(...project(tail.x,tail.y));
+    const stride=Math.max(1,Math.floor((marker.index-tail.index)/120));
+    for(let i=tail.index+1;i<=marker.index;i+=stride)ctx.lineTo(...project(frames[i][1],frames[i][2]));
+    ctx.lineTo(...project(marker.x,marker.y));ctx.strokeStyle=entry.colour;
+    ctx.globalAlpha=.70;ctx.lineWidth=2;ctx.lineJoin='round';ctx.stroke();ctx.globalAlpha=1;
+  }
+  for(const {entry,marker} of positions)drawDuck(ctx,marker,false,entry.colour);
+  // Move only the numbered bibs when two measured positions overlap; keep the
+  // ducks and trails at their original coordinates.
+  const occupied=[];
+  const width=ui.screen.clientWidth, height=ui.screen.clientHeight;
+  ctx.font='bold 10px Barlow, sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  for(const {entry,marker} of positions){
+    const [x,y]=project(marker.x,marker.y);
+    let point=null;
+    for(const radius of [17,31,46]){
+      for(const [dx,dy] of [[0,-1],[.9,-.5],[-.9,-.5],[1,.2],[-1,.2],[.6,.9],[-.6,.9],[0,1]]){
+        const px=Math.max(9,Math.min(width-9,x+dx*radius)),py=Math.max(9,Math.min(height-9,y+dy*radius));
+        if(occupied.every(p=>Math.hypot(p[0]-px,p[1]-py)>=16)){
+          point=[px,py];break;
+        }
+      }
+      if(point)break;
+    }
+    if(!point)continue;
+    occupied.push(point);
+    ctx.strokeStyle=entry.colour;ctx.lineWidth=1;ctx.beginPath();
+    ctx.moveTo(x,y);ctx.lineTo(...point);ctx.stroke();ctx.fillStyle='#152321';
+    ctx.beginPath();ctx.arc(...point,7.5,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle=entry.colour;ctx.fillText(entry.bib,...point);
+  }
+  ctx.textAlign='start';ctx.textBaseline='alphabetic';
+}
+
+function driverName(id,local) {
+  if(local)return id;
+  return id.replace(/^jackdh-/, '').split('-').map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join(' ');
+}
+
+function resultsList(missing,local){
+  const target=element('field-rows');
+  target.replaceChildren();
+  const ranked=[...field].sort((a,b)=>Number(b.run.finished)-Number(a.run.finished) ||
+    (a.run.finished && b.run.finished ? a.run.time-b.run.time : 0) || a.id.localeCompare(b.id));
+  const wins=ranked.filter(e=>e.run.finished && e.run.time===ranked[0].run.time);
+  const fastest=wins.length>0?wins[0].run.time:0;
+  element('field-winner').textContent=wins.length===0?'No recorded driver finished this lap.':
+    (wins.length>1?'Joint winners on this start: ':'Winner on this start: ')+wins.map(e=>driverName(e.id,local)).join(', ')+
+    ' · '+lapClock(fastest,2);
+  let previousTime=null,place=0;
+  for(const [index,entry] of ranked.entries()){
+    const row=document.createElement('li');
+    row.dataset.runId=entry.id;
+    row.style.setProperty('--driver-colour',entry.colour);
+    if(wins.includes(entry))row.className='fastest-row';
+    const select=document.createElement('label');
+    const checkbox=document.createElement('input');
+    checkbox.type='checkbox';checkbox.checked=true;
+    checkbox.setAttribute('aria-label','Show '+entry.id+' on the map');
+    checkbox.addEventListener('change',()=>{
+      entry.hidden=!checkbox.checked;row.classList.toggle('muted-driver',entry.hidden);drawMap();
+    });
+    const bib=document.createElement('span');bib.className='field-bib';bib.textContent=entry.bib;
+    const name=document.createElement('span');name.className='field-driver';name.textContent=driverName(entry.id,local);
+    select.append(checkbox,bib,name);
+    const time=document.createElement('span');time.className='field-time';
+    if(entry.run.finished){
+      if(previousTime!==entry.run.time)place=index+1;
+      previousTime=entry.run.time;
+      time.textContent=lapClock(entry.run.time,2);
+      time.setAttribute('aria-label','Place '+place+' · '+entry.run.time.toFixed(2)+' seconds');
+    }else time.textContent='DNF';
+    const details=document.createElement('small');details.className='field-gap';
+    details.textContent=entry.run.finished?(wins.includes(entry)?'Fastest lap':'+'+(entry.run.time-fastest).toFixed(2)+' s'):entry.run.reason;
+    row.append(select,time,details);target.append(row);
+  }
+  const unavailable=element('field-unavailable');
+  unavailable.hidden=missing.length===0;
+  unavailable.textContent=missing.map(item=>item.id+' · '+item.error).join('; ');
+}
+
+function loadField(reference,entrants,missing,local) {
+  pause();
+  const all=entrants.map((entry,i)=>({...entry,bib:String(i+1),colour:fieldColours[i%fieldColours.length],hidden:false}));
+  const focus=all.find(entry=>entry.run.finished) || all[0];
+  race={track:reference.track,seed:reference.seed,baseline:reference.baseline,challenger:focus.run};
+  field=all;
+  raceDuration=all.reduce((end,e)=>Math.max(end,e.run.time),reference.baseline.time);
+  elapsed=0;
+  element('single-telemetry').hidden=true;
+  element('field-results').hidden=false;
+  element('trail-label').textContent='Racing lines';
+  document.querySelector('.gradient-legend').hidden=true;
+  ui['track-title'].textContent=local?'Local ghost race':'re:Invent 2018';
+  ui['track-detail'].textContent=all.length+' drivers · same start, seed '+reference.seed;
+  ui['video-view'].hidden=true;
+  ui.track.setAttribute('aria-label','Overhead race with '+all.length+' numbered drivers sharing one track and clock');
+  ui.video.pause();ui.video.removeAttribute('src');ui.video.load();
+  if(angle!=='map')setAngle('map');
+  ui.workspace.hidden=false;ui.message.textContent='';
+  ui.seek.max=raceDuration;ui.duration.textContent=lapClock(raceDuration);
+  resultsList(missing,local);
+  pause();resize();
 }
 
 function drawMap() {
   if(!project || angle!=='map')return;
   const ctx=ui.track.getContext('2d');
   ctx.drawImage(terrain,0,0,ui.screen.clientWidth,ui.screen.clientHeight);
+  if (field) {
+    drawField(ctx);
+    return;
+  }
   const duck=frameAt(race.challenger,elapsed);
   if(ui.ghost.checked){
     const ghost=frameAt(race.baseline,elapsed);
@@ -242,7 +386,7 @@ function buildPlot(){
   ctx.strokeStyle='#bd502c';ctx.lineWidth=1.7;ctx.stroke();
 }
 function drawPlot(){
-  if(!plot)return;
+  if(!plot || field)return;
   const c=ui['speed-plot'],ctx=c.getContext('2d'),w=c.clientWidth,h=c.clientHeight;
   ctx.clearRect(0,0,w,h);ctx.drawImage(plot,0,0,w,h);
   const x=Math.min(w-1,Math.max(1,elapsed/raceDuration*w));ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.strokeStyle='#475b51';ctx.lineWidth=1.4;ctx.stroke();
@@ -260,7 +404,7 @@ function update(){
 
 function resize(){
   if(!race || ui.workspace.hidden)return;
-  drawTerrain();buildPlot();update();
+  drawTerrain();if(!field)buildPlot();update();
 }
 
 function pause(){
@@ -327,6 +471,12 @@ function resultText(run){
 
 function loadRace(raw,custom=false,archived=false){
   const validated=parseRace(raw);
+  field=null;
+  element('field-results').hidden=true;
+  element('single-telemetry').hidden=false;
+  element('trail-label').textContent='Speed trail';
+  document.querySelector('.gradient-legend').hidden=false;
+  ui.track.setAttribute('aria-label','Overhead map of the skating duck and the centreline ghost');
   pause();
   race=validated;
   raceDuration=Math.max(race.challenger.frames.at(-1)[0],race.baseline.frames.at(-1)[0],race.challenger.time,race.baseline.time);
@@ -358,7 +508,8 @@ function loadRace(raw,custom=false,archived=false){
 
 ui.play.addEventListener('click',()=>playing?pause():play());
 ui.seek.addEventListener('input',()=>{
-  elapsed=Number(ui.seek.value);
+  const value=Number(ui.seek.value);
+  elapsed=raceDuration-value <= Number(ui.seek.step)/2+1e-8 ? raceDuration : value;
   if(elapsed>=raceDuration)pause();
   else if(!playing)pause();
   syncVideo();update();
@@ -375,22 +526,37 @@ ui.video.addEventListener('error',()=>{
   ui.message.textContent='The trackside film could not load. The overhead replay is available.';
 });
 ui.upload.addEventListener('change',async()=>{
-  const file=ui.upload.files[0];if(!file)return;
+  const files=Array.from(ui.upload.files);
+  if(!files.length)return;
   const request=++sourceRequest;
   try{
-    if(file.size>50e6)throw new Error('Please use a replay smaller than 50 MB.');
-    const raw=JSON.parse(await file.text());
-    if(request===sourceRequest){
-      loadRace(raw,true);
-      picker.value=':local';
-      activeRun=':local';
-      const option=picker.querySelector('[value=":local"]');
-      option.hidden=false;
-      element('run-parent').hidden=true;
-      const url=new URL(location.href);
-      url.searchParams.delete('run');
-      history.replaceState(null,'',url);
+    if(files.reduce((sum,f)=>sum+f.size,0)>50e6)throw new Error('Choose replay files totalling under 50 MB.');
+    const raws=await Promise.all(files.map(async f=>JSON.parse(await f.text())));
+    if(request!==sourceRequest)return;
+    if(files.length===1)loadRace(raws[0],true);
+    else {
+      const fieldRuns=raws.map(parseRace);
+      const seen=new Set();
+      const entrants=fieldRuns.map((r,i)=>{
+        const mismatch=compareConditions(fieldRuns[0],r);
+        if(mismatch)throw new Error(files[i].name+': '+mismatch+'.');
+        const parent=files[i].webkitRelativePath?.split('/').at(-2);
+        let label=(parent || files[i].name.replace(/\.json$/i,'')).trim() || 'Local run';
+        if(seen.has(label))label+=' ('+(i+1)+')';
+        seen.add(label);
+        return {id:label,run:r.challenger};
+      });
+      loadField(fieldRuns[0],entrants,[],true);
     }
+    localOption.textContent=files.length>1?'Opened replays':'Opened file';
+    localOption.hidden=false;
+    picker.value=':local';
+    activeRun=':local';
+    element('run-parent').hidden=true;
+    const url=new URL(location.href);
+    url.searchParams.delete('run');
+    url.searchParams.delete('view');
+    history.replaceState(null,'',url);
   }catch(error){if(request===sourceRequest)ui.message.textContent='Replay could not open. '+error.message;}
   ui.upload.value='';
 });
@@ -414,30 +580,61 @@ function setParent(run){
   const link=document.createElement('a');
   const url=new URL(location.href);
   url.searchParams.set('run',run.parent);
+  url.searchParams.delete('view');
   link.href=url.href;
   link.textContent=run.parent;
   target.append('Parent: ',link);
 }
 
+const replayPaths = new Map();
+async function fetchReplay(id) {
+  if (replayPaths.has(id))return replayPaths.get(id);
+  const path=id?'./lineage/'+encodeURIComponent(id)+'/race.json':'./replays/race.json';
+  const result=fetch(path).then(response=>{
+    if(!response.ok)throw new Error('Replay unavailable');
+    return response.json();
+  });
+  replayPaths.set(id,result);
+  try{return await result;}
+  catch(error){replayPaths.delete(id);throw error;}
+}
+
 async function openRun(id, replaceAddress=true){
   const request=++sourceRequest;
   try{
-    if(id && !runs.has(id))throw new Error('This run is not in the archive.');
-    const archived=Boolean(id);
-    const path=archived ? './lineage/'+encodeURIComponent(id)+'/race.json' : './replays/race.json';
-    const response=await fetch(path);
-    if(!response.ok)throw new Error('Could not fetch the replay.');
-    const raw=await response.json();
-    if(request!==sourceRequest)return;
-    loadRace(raw,false,archived);
+    if(id===':all'){
+      const reference=parseRace(await fetchReplay(''));
+      const snapshots=await Promise.all([...runs.keys()].map(async key=>{
+        try{
+          const archived=parseRace(await fetchReplay(key));
+          const mismatch=compareConditions(reference,archived);
+          if(mismatch)return {id:key,error:mismatch};
+          return {id:key,run:archived.challenger};
+        }catch {return {id:key,error:'replay unavailable'};}
+      }));
+      if(request!==sourceRequest)return;
+      const entrants=snapshots.filter(item=>item.run);
+      const missing=snapshots.filter(item=>item.error);
+      if(!entrants.length)throw new Error('No saved laps on the featured track and start seed.');
+      loadField(reference,entrants,missing,false);
+      setParent(null);
+    }else{
+      if(id && !runs.has(id))throw new Error('This run is not in the archive.');
+      const raw=await fetchReplay(id);
+      if(request!==sourceRequest)return;
+      loadRace(raw,false,Boolean(id));
+      setParent(runs.get(id));
+    }
     picker.value=id;
     localOption.hidden=true;
     activeRun=id;
-    setParent(runs.get(id));
     if(replaceAddress){
       const url=new URL(location.href);
-      if(id)url.searchParams.set('run',id);
+      if(id && id!==':all')url.searchParams.set('run',id);
       else url.searchParams.delete('run');
+      if(id==='')url.searchParams.set('view','featured');
+      else if(id===':all')url.searchParams.set('view','all');
+      else url.searchParams.delete('view');
       history.replaceState(null,'',url);
     }
   }catch(error){
@@ -461,7 +658,8 @@ async function startViewer(){
       }
     }
   }catch{ /* The featured replay works in copies without a run archive. */ }
-  element('run-archive').hidden=runs.size===0;
+  element('run-archive').hidden=false;
+  picker.querySelector('[value=":all"]').hidden=runs.size===0;
   // Keep setup and the run tree attached to the current public GitHub Pages fork.
   const pagesOwner=location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
   const pagesRepo=location.pathname.split('/').filter(Boolean)[0];
@@ -470,8 +668,9 @@ async function startViewer(){
     document.querySelector('.train-link').href=repo+'#try-your-own-duck';
   }
   if(sourceRequest!==pending)return;
-  const requested=new URLSearchParams(location.search).get('run') || '';
-  if(requested && !runs.has(requested)){
+  const params=new URLSearchParams(location.search);
+  const requested=params.get('run') || ((runs.size && params.get('view')!=='featured')?':all':'');
+  if(requested && requested!==':all' && !runs.has(requested)){
     await openRun('',false);
     ui.message.textContent='That run is unavailable here. Showing the featured race.';
   }else{

@@ -14,7 +14,7 @@ Choose **three** to run three separate searches from the same parent using GitHu
 | `-b` | Corner | 12 | 20261114 |
 | `-c` | Stability | 6 | 20261115 |
 
-The single search keeps your ID as entered and uses the balanced strategy with seed 20261113 and the parent’s sector count. After the jobs finish, open the workflow summary. Each successful child has its own `race-record-<child-id>` artifact containing the driver, lap replay and results on the same evaluation starts. Compare finish counts and median clean times before picking one. Download the artifact, unzip it and choose its `race.json` in **Open replay**.
+The single search keeps your ID as entered and uses the balanced strategy with seed 20261113 and the parent’s sector count. After the jobs finish, open the workflow summary. Each successful child has its own `race-record-<child-id>` artifact containing the driver, lap replay and results on the same evaluation starts. Compare finish counts and median clean times before picking one. Download the artifact, unzip it and choose its `race.json` in **Open replays**.
 
 Tick **Save each run on a new branch** to keep the results in your fork. Each child gets its own branch and a link to its tree in the save job summary. You can merge just the one you want, send a pull request upstream, or share all three. If branch saving is disabled by your fork’s Actions permissions, download the artifacts, copy each one’s four files into `lineage/<child-id>/`, run `python run_tree.py index` and `python run_tree.py check`, then commit those run folders and the two index files.
 
@@ -35,7 +35,21 @@ python race.py evaluate --policy "runs/$run_id/driver.json" \
   --report "runs/$run_id/evaluation.json" --workers 4
 ```
 
-The driver, replay and evaluation should all be from the same experiment. If you change the driver, regenerate its replay and evaluation. To watch it before you save it, open the [viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and choose **Open replay**, then select your `runs/$run_id/race.json`.
+The driver, replay and evaluation should all be from the same experiment. If you change the driver, regenerate its replay and evaluation. To watch it before you save it, open the [viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and choose **Open replays**, then select your `runs/$run_id/race.json`.
+
+## Save all three ghosts from a local league
+
+If you ran three local trainers from the same archived checkpoint, save the three siblings together. Use the actual parent ID you passed to the league and a new prefix:
+
+```bash
+python run_tree.py add-league yourname-morning --parent jackdh-round-two --from-dir runs/league
+python run_tree.py check
+git add lineage/
+git commit -m "feat(runs): save my three morning racers"
+git push -u origin HEAD
+```
+
+Each child keeps its checkpoint, full lap replay and evaluation. Merge your branch into the branch served by your fork’s Pages site to watch them together. The `add-league` command checks the saved parent and records every driver, including any that fell.
 
 ## Add the child to your tree
 
@@ -54,6 +68,8 @@ git push -u origin HEAD
 Open the branch on your fork. The new driver sits under its parent in `lineage/index.md`. Share that page directly, merge the branch into your fork’s default branch, or open a pull request to the original project to add it to the shared tree. In the pull request, say what you changed and include the number of clean finishes as well as the lap time. If you changed the simulator or trainer, include the code so the run can be repeated.
 
 ## Watch or check a saved run
+
+The public viewer opens with **All saved runs** on one map. Each numbered duck is a recorded lap. The viewer compares runs on the featured circuit with the same start seed. A fall is shown as a DNF. The fastest finisher wins that particular replay. You can also choose several local JSON files at once to compare compatible runs from other forks.
 
 The GitHub tree links to the checkpoint, replay and individual results. You can download any replay JSON and open it in the browser viewer. On a Pages site that includes the run, add `?run=yourname-wide-exit` to the viewer URL to go straight to it. A fork can host its own viewer by opening **Settings → Pages → Deploy from a branch** and selecting the default branch and `/ (root)`. Use the URL GitHub gives your fork.
 

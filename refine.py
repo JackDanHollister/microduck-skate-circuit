@@ -153,15 +153,14 @@ def final_selection(pool, track, history, random_seed=818419):
         ),
     )
     selected = checks[i]
+    clean_times = [r["time"] for r in selected if r["finished"]]
     result = {
         "screened": len(candidates),
         "shortlisted": len(shortlist),
         "finalists": len(finalists),
         "selection_seeds": selection_seeds + last_seeds,
         "selection_finishes": sum(r["finished"] for r in selected),
-        "median_clean_s": float(
-            np.median([r["time"] for r in selected if r["finished"]])
-        ),
+        "median_clean_s": float(np.median(clean_times)) if clean_times else None,
     }
     print(
         "Final selection",
@@ -169,7 +168,7 @@ def final_selection(pool, track, history, random_seed=818419):
         "/",
         len(selected),
         "clean, median",
-        round(result["median_clean_s"], 3),
+        round(result["median_clean_s"], 3) if clean_times else None,
         flush=True,
     )
     return shortlist[finalists[i]].copy(), result

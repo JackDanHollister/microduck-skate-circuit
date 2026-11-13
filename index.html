@@ -12,7 +12,7 @@
   <header class="masthead">
     <div class="masthead-inner">
       <div class="brand"><span class="flag" aria-hidden="true"></span>Microduck</div>
-      <div class="masthead-actions"><a class="train-link" href="https://github.com/JackDanHollister/microduck-skate-circuit#readme">Train your duck ↗</a><label class="load-control"><span aria-hidden="true">↑</span> Open replay<input id="upload" type="file" accept=".json,application/json" aria-label="Open a local race replay in JSON format"></label></div>
+      <div class="masthead-actions"><a class="train-link" href="https://github.com/JackDanHollister/microduck-skate-circuit#readme">Train your duck ↗</a><label class="load-control"><span aria-hidden="true">↑</span> Open replays<input id="upload" type="file" multiple accept=".json,application/json" aria-label="Open one or more local race replays in JSON format"></label></div>
     </div>
   </header>
 
@@ -42,17 +42,24 @@
         </div>
         <div class="map-options" id="map-options">
           <label><input type="checkbox" id="ghost" checked> Centreline ghost</label>
-          <label><input type="checkbox" id="line" checked> Speed trail</label>
+          <label><input type="checkbox" id="line" checked> <span id="trail-label">Speed trail</span></label>
           <div class="gradient-legend"><span>Slow</span><i></i><span>Fast</span></div>
         </div>
       </section>
 
       <aside class="telemetry" aria-label="Lap telemetry">
         <div class="run-archive" id="run-archive" hidden>
-          <label for="run-picker">Recorded run</label>
-          <select id="run-picker"><option value="">Featured race</option></select>
+          <label for="run-picker">Race view</label>
+          <select id="run-picker"><option value=":all">All saved runs</option><option value="">Featured race · trackside film</option></select>
           <p id="run-parent" hidden></p>
         </div>
+        <section id="field-results" hidden aria-label="Recorded finish order">
+          <h2>Recorded finish order</h2>
+          <p id="field-winner"></p>
+          <ol id="field-rows"></ol>
+          <p id="field-unavailable" hidden></p>
+        </section>
+        <div id="single-telemetry">
         <h2>Lap comparison</h2>
         <div class="result"><div class="legend-name"><i class="racer-mark"></i>Trained duck</div><span id="challenger-result" class="time">—</span></div>
         <div class="result"><div class="legend-name"><i class="ghost-mark"></i>Centreline ghost</div><span id="baseline-result" class="time">—</span></div>
@@ -62,6 +69,7 @@
           <div class="speed-reading"><span id="speed">0.00</span><small>m/s</small></div>
           <canvas id="speed-plot" role="img" aria-label="Duck speed across the lap, with a cursor at the current replay time"></canvas>
           <div class="chart-labels"><span>Start</span><span id="chart-end">Finish</span></div>
+        </div>
         </div>
       </aside>
     </div>

@@ -2,21 +2,27 @@
 
 I wanted to see if my Microduck could find a faster way around a racing circuit on skates. I put it on the original AWS DeepRacer re:Invent 2018 course and gave it a centreline ghost to chase. The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
 
-**[Watch the race](https://jackdanhollister.github.io/microduck-skate-circuit/)**. Press **Play** on the overhead map to see the speed trail, or switch to **Trackside** to watch the white duck race the blue ghost. The viewer runs in a browser on a phone or laptop.
+**[Watch all the ghosts race](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)**. Press **Play** to see the archived drivers share the same starting line and clock. Each duck has a colour and a number. The results beside the map show the fastest finisher on that recorded start. Pick a different run or hide a ghost to follow one through a corner.
 
-[![A white Microduck skating into a bend with the blue centreline ghost on its inside](replays/trackside.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/)
+For a close-up of the duck on its skates, open the [featured replay](https://jackdanhollister.github.io/microduck-skate-circuit/?view=featured) and select **Trackside**.
+
+[![Five recorded drivers together at 21.8 seconds, with Stability out in front](replays/ghost-field.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
 
 ## Which duck wins?
 
-I ran the centreline ghost, my first racer and its new driver on the same 64 fresh simulated starts. The new driver finished every lap. I kept the first driver in the run tree so anyone can race it or try a different branch. [Compare the runs](lineage/index.md)
+On the lap you can watch, **Stability** crosses first in **25.76 s**. Cornering takes 27.19 s and Pace takes 27.30 s. The map includes my first two drivers as well, so I can see where each generation gained or lost ground. [Race all five](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
 
-| Driver | Clean finishes | Median clean lap |
-| --- | ---: | ---: |
-| Centreline ghost | 64 / 64 | 29.60 s |
-| First racer | 57 / 64 | 27.96 s |
-| Round two | 64 / 64 | 27.63 s |
+I picked **Cornering** as my featured driver. I ran Pace, Cornering and Stability as three separate ten-generation searches from the same parent, with different random seeds. Cornering and Pace finished all 48 selection starts. Stability finished 46. Cornering had the quicker typical lap of the two that finished them all. I froze its checkpoint before running a separate test. [Selection results](replays/parallel-selection.json)
 
-Round two beat its parent on 41 of the 57 starts where both finished. On the **featured start**, round two took **27.84 s**, the original driver took **27.54 s** and the centreline ghost took **29.83 s**. I chose round two for its clean finishes and typical pace. [All 64 results](replays/championship-evaluation.json) · [Watch the original run](https://jackdanhollister.github.io/microduck-skate-circuit/?run=jackdh-first-lap)
+| Driver on the same 64 new starts | Clean finishes | Median clean lap |
+|---|---:|---:|
+| Centreline ghost | 64/64 | 29.63 s |
+| Round two (parent) | 61/64 | 27.73 s |
+| Cornering | 64/64 | 26.67 s |
+
+Cornering beat its parent on every one of the 61 starts where both finished. The median gain on those paired laps was 1.02 s. This measures the drivers on one simulated course. [All 64 paired results](replays/parallel-evaluation.json)
+
+My earlier round-two driver finished 64/64 on its own test set, compared with 57/64 for my first racer. The two tests used different starting seeds. Every archived driver has its own replay, checkpoint and standard 16-start evaluation in the [run tree](lineage/index.md). [Earlier comparison](replays/championship-evaluation.json)
 
 ## Race from a fork
 
@@ -53,9 +59,9 @@ If `python3.12` is missing or your system Python cannot create a virtual environ
 python race.py replay --seed 1 --output runs/my-lap.json
 ```
 
-The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replay** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch on the overhead map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
+The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replays** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch on the overhead map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
 
-You can also serve the viewer from your clone. Run `python -m http.server 8000 --bind 127.0.0.1` in the repo root, open [localhost:8000](http://localhost:8000), then use **Open replay**. Press Ctrl+C in the terminal to stop the server.
+You can also serve the viewer from your clone. Run `python -m http.server 8000 --bind 127.0.0.1` in the repo root, open [localhost:8000](http://localhost:8000), then use **Open replays**. Press Ctrl+C in the terminal to stop the server.
 
 ### 4. Train a driver
 
@@ -71,10 +77,10 @@ python race.py evaluate --policy runs/my-driver.json --workers 4 --report runs/m
 
 ### 5. Run several searches together
 
-I split one CPU budget across three trainers. They all start from the same driver. They use different search seeds to explore **pace**, **cornering** and **stability**. On a machine with six spare cores:
+I split one CPU budget across three trainers. They all start from the same driver. The **pace** trainer tries bigger changes in speed. The **cornering** trainer varies its line and steering more. The **stability** trainer makes smaller changes and tests each candidate on one extra start. Each gets its own random seed. On a machine with six spare cores:
 
 ```bash
-python league.py train --start-from driver.json --workers 6 --generations 8 --output runs/league
+python league.py train --start-from lineage/jackdh-round-two/driver.json --workers 6 --generations 10 --output runs/league
 ```
 
 Six workers means two per trainer. Use a fresh output folder for each batch. Each trainer saves its driver, replay and log under `runs/league/pace/`, `corner/` or `stability/`. The league compares all three with their parent on the same 48 selection starts. It saves the winner in `runs/league/winner.json` and the comparison in `runs/league/selection.json`. The parent can win. Open the three `race.json` files in the viewer to compare the laps.
@@ -83,10 +89,12 @@ To check whether that winner improves on the parent, use a fresh range of starts
 
 ```bash
 python compare_drivers.py --parent runs/league/parent.json --challenger runs/league/winner.json \
-  --first-seed 11200 --starts 64 --workers 6 --output runs/league/final-test.json
+  --first-seed 12000 --starts 64 --workers 6 --output runs/league/final-test.json
 ```
 
 To run this on GitHub's machines, go to **Actions → Train a racer** in your fork and set **Independent searches** to **three**. Each search produces its own child run. [Run it on GitHub](docs/runs.md#run-it-on-github)
+
+To keep all three replays in your fork, archive the league under the ID of the parent you used. They will appear side by side in the tree and race together on the map when the fork's Pages site updates. [Save all three ghosts](docs/runs.md#save-all-three-ghosts-from-a-local-league)
 
 ## How the lap works
 

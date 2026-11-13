@@ -18,6 +18,7 @@ ARTIFACTS = ("driver.json", "race.json", "evaluation.json")
 FIRST = "jackdh-first-lap"
 ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 TRACK = ROOT / "data" / "reinvent2018.json"
+LEAGUE_STRATEGIES = ("pace", "corner", "stability")
 
 
 def run_id(value):
@@ -145,6 +146,39 @@ def assess(folder):
     return race["challenger"], evaluation["challenger"], race["seed"]
 
 
+def validate_record(folder, ident):
+    card = load(folder / "run.json")
+    require(
+        card["version"] == 1 and card["id"] == ident,
+        f"Invalid run card at {folder}",
+    )
+    source = card["source"]
+    require(
+        all(
+            isinstance(source[k], str) and re.fullmatch(r"[0-9a-f]{64}", source[k])
+            for k in ("simulator_sha256", "track_sha256")
+        )
+        and (
+            source["revision"] is None
+            or (
+                isinstance(source["revision"], str)
+                and re.fullmatch(r"[0-9a-f]{40,64}", source["revision"])
+            )
+        ),
+        f"Invalid source revision or file hashes for {ident}.",
+    )
+    parent = card["parent"]
+    if ident == FIRST:
+        require(parent is None, f"{FIRST} must be the root.")
+    else:
+        run_id(parent)
+    lap, ev, seed = assess(folder)
+    require(
+        card["files"] == filesums(folder), f"Recorded files were changed in {ident}"
+    )
+    return parent, lap, ev, seed
+
+
 def records(archive):
     require(
         archive.is_dir() and not archive.is_symlink(),
@@ -158,36 +192,7 @@ def records(archive):
             folder.is_dir() and not folder.is_symlink(), f"Unexpected entry at {folder}"
         )
         ident = run_id(folder.name)
-        card = load(folder / "run.json")
-        require(
-            card["version"] == 1 and card["id"] == ident,
-            f"Invalid run card at {folder}",
-        )
-        source = card["source"]
-        require(
-            all(
-                isinstance(source[k], str) and re.fullmatch(r"[0-9a-f]{64}", source[k])
-                for k in ("simulator_sha256", "track_sha256")
-            )
-            and (
-                source["revision"] is None
-                or (
-                    isinstance(source["revision"], str)
-                    and re.fullmatch(r"[0-9a-f]{40,64}", source["revision"])
-                )
-            ),
-            f"Invalid source revision or file hashes for {ident}.",
-        )
-        parent = card["parent"]
-        if ident == FIRST:
-            require(parent is None, f"{FIRST} must be the root.")
-        else:
-            run_id(parent)
-        lap, ev, seed = assess(folder)
-        require(
-            card["files"] == filesums(folder), f"Recorded files were changed in {ident}"
-        )
-        entries[ident] = (parent, lap, ev, seed)
+        entries[ident] = validate_record(folder, ident)
     require(FIRST in entries, f"Missing first run {FIRST}")
     for ident, (parent, *_) in entries.items():
         require(
@@ -285,6 +290,26 @@ def provenance():
     return source
 
 
+def stage_record(stage, ident, parent, paths):
+    for name, source in zip(ARTIFACTS, paths, strict=True):
+        require(
+            source.is_file() and not source.is_symlink(),
+            f"Expected a regular file at {source}",
+        )
+        (stage / name).write_bytes(source.read_bytes())
+    assess(stage)
+    card = {
+        "version": 1,
+        "id": ident,
+        "parent": parent,
+        "source": provenance(),
+        "files": filesums(stage),
+    }
+    (stage / "run.json").write_text(
+        json.dumps(card, indent=2) + "\n", encoding="utf-8"
+    )
+
+
 def add(archive, ident, parent, paths):
     run_id(ident)
     run_id(parent)
@@ -295,24 +320,41 @@ def add(archive, ident, parent, paths):
     with tempfile.TemporaryDirectory(prefix=".new-run-", dir=archive) as directory:
         stage = Path(directory) / ident
         stage.mkdir()
-        for name, source in zip(ARTIFACTS, paths, strict=True):
-            require(
-                source.is_file() and not source.is_symlink(),
-                f"Expected a regular file at {source}",
-            )
-            (stage / name).write_bytes(source.read_bytes())
-        assess(stage)
-        card = {
-            "version": 1,
-            "id": ident,
-            "parent": parent,
-            "source": provenance(),
-            "files": filesums(stage),
-        }
-        (stage / "run.json").write_text(
-            json.dumps(card, indent=2) + "\n", encoding="utf-8"
-        )
+        stage_record(stage, ident, parent, paths)
         stage.rename(archive / ident)
+    write_index(archive)
+
+
+def add_league(archive, prefix, parent, directory):
+    """Archive all three timed replays, including slower drivers or a DNF."""
+    run_id(prefix)
+    run_id(parent)
+    ids = set(records(archive))
+    require(parent in ids, f"Unknown parent {parent}.")
+    original = directory / "parent.json"
+    require(original.is_file() and not original.is_symlink() and
+            original.read_bytes() == (archive / parent / "driver.json").read_bytes(),
+            "The league must have started from the checkpoint of the specified parent.")
+    with tempfile.TemporaryDirectory(prefix=".league-", dir=archive) as tmp:
+        staged = []
+        for strategy in LEAGUE_STRATEGIES:
+            ident = run_id(f"{prefix}-{strategy}")
+            child = Path(tmp) / ident
+            child.mkdir()
+            paths = [directory / strategy / name for name in ARTIFACTS]
+            stage_record(child, ident, parent, paths)
+            validate_record(child, ident)
+            if ident in ids:
+                existing = archive / ident
+                require(load(existing / "run.json")["parent"] == parent and
+                        filesums(existing) == filesums(child),
+                        f"Run {ident} already exists with different results. Choose another prefix.")
+            else:
+                staged.append(child)
+        # Validate every sibling before installing any of them. An interrupted
+        # run can be retried with matching records already present.
+        for child in staged:
+            child.rename(archive / child.name)
     write_index(archive)
 
 
@@ -326,6 +368,10 @@ def main():
     new.add_argument("--parent", required=True)
     for name in ("driver", "replay", "evaluation"):
         new.add_argument("--" + name, type=Path, required=True)
+    family = actions.add_parser("add-league", help="archive all three ghosts from a completed league")
+    family.add_argument("prefix", help="new run ID prefix shared by the three siblings")
+    family.add_argument("--parent", required=True)
+    family.add_argument("--from-dir", required=True, type=Path)
     actions.add_parser(
         "check", help="check the run cards, hashes, results, ancestry and GitHub index"
     )
@@ -339,6 +385,8 @@ def main():
                 args.parent,
                 [args.driver, args.replay, args.evaluation],
             )
+        elif args.action == "add-league":
+            add_league(ARCHIVE, args.prefix, args.parent, args.from_dir)
         elif args.action == "index":
             write_index(ARCHIVE)
         else:

@@ -53,6 +53,27 @@ class RunTreeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cycle"):
             tree.write_index(self.archive)
 
+    def test_league_requires_its_real_parent_and_preserves_all_ghosts(self):
+        folder = self.archive.parent / "league"
+        folder.mkdir()
+        shutil.copyfile(self.artifacts[0], folder / "parent.json")
+        for name in tree.LEAGUE_STRATEGIES:
+            shutil.copytree(self.root_folder, folder / name)
+        (folder / "corner" / "evaluation.json").unlink()
+        with self.assertRaises(ValueError):
+            tree.add_league(self.archive, "my-racers", tree.FIRST, folder)
+        self.assertFalse((self.archive / "my-racers-pace").exists())
+        shutil.copyfile(self.artifacts[-1], folder / "corner" / "evaluation.json")
+        for _ in range(2):
+            tree.add_league(self.archive, "my-racers", tree.FIRST, folder)
+        records = tree.records(self.archive)
+        self.assertEqual(len(records), 4)
+        for name in tree.LEAGUE_STRATEGIES:
+            self.assertEqual(records["my-racers-" + name][0], tree.FIRST)
+        (folder / "parent.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "checkpoint"):
+            tree.add_league(self.archive, "different", tree.FIRST, folder)
+
     def test_corrupt_median_does_not_create_partial_entry(self):
         old = json.loads(self.artifacts[-1].read_text())
         old["challenger"]["median_clean_s"] = 0.1
