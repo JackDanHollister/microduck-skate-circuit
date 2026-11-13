@@ -6,6 +6,8 @@ I wanted to see if my Microduck could find a faster way around a racing circuit 
 
 Duck 28 set the quickest lap I saw during training, 25.04 s. It came in generation nine of the cornering search. Four of the other nine ducks in its group of ten went off track on that start. [Follow Duck 28 through the bend](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training&strategy=corner&generation=9&seed=182&heat=3) · [Ten-second clip](https://jackdanhollister.github.io/microduck-skate-circuit/replays/duck-28-corner.mp4)
 
+I also tried Duck 28's steering with my Roller Sprint checkpoint 500 and HlibPlakhtii's Quicksilver v2, the 2 m Arena leader on 13 November 2026. Both matched all five of their official sprint times locally. On Duck 28's original circuit start my duck fell at 1.76 s and Quicksilver fell at 0.34 s. Pollen's roller finished in 25.04 s. Across 64 fresh starts Pollen finished 25 laps. Neither sprint checkpoint reached the first gate. The circuit asks all three to settle at zero speed and then steers them in response to their movement. I kept the published weights and the driving settings fixed. [Watch the three starts](https://jackdanhollister.github.io/microduck-skate-circuit/?view=sprint) · [Half-speed clip](replays/sprint-transfer/launch.mp4) · [Results by start](replays/sprint-transfer/results.json) · [Quicksilver on the Arena](https://huggingface.co/spaces/pollen-robotics/microduck-arena#/r/01M6487YAJEV5NF6J5ZJ5W)
+
 I also kept a five-duck race with the two earlier drivers and the three that came out of the parallel searches. You can watch their legs move in **3D**, switch to **Map** to compare their lines, or choose **Film** for the moving trackside camera. [Race the five saved drivers](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all) · [Play the trackside film](https://jackdanhollister.github.io/microduck-skate-circuit/replays/ghost-race.mp4)
 
 [![Stability leading the pack through a bend on the re:Invent circuit](replays/ghost-race.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
@@ -68,6 +70,8 @@ python race.py replay --seed 1 --output runs/my-lap.json
 ```
 
 The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replays** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch the recorded duck in 3D or follow its line on the map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
+
+To repeat the sprint checkpoint comparison, run `python sprint_transfer.py --workers 4`. It downloads the two pinned competition exports, checks their five straight-line times, then runs all three skating controllers with the same Duck 28 driver. Open `runs/sprint-transfer/race.json` in the viewer to watch them together.
 
 You can also serve the viewer from your clone. Run `python -m http.server 8000 --bind 127.0.0.1` in the repo root, open [localhost:8000](http://localhost:8000), then use **Open replays**. Press Ctrl+C in the terminal to stop the server.
 

@@ -220,12 +220,13 @@ def setup(filename):
     return event, model, start, wheels
 
 
-def simulate(filename, driver, seed, record=False):
+def simulate(filename, driver, seed, record=False, *, controller=None):
     track = course(filename)
     event, model, start, wheels = setup(filename)
     command = np.zeros(13)
+    skater = roller() if controller is None else controller
     sim, _, _ = runner._start(
-        event, model, [roller()], [start.yaw_deg], int(seed), [command]
+        event, model, [skater], [start.yaw_deg], int(seed), [command]
     )
     data = sim.data
     trunk = sim.ducks[0].adr.trunk

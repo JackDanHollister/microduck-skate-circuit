@@ -76,14 +76,18 @@ function readRun(raw, name, jointOrder=null) {
   return {frames, speeds, order, articulated, time: raw.time, finished: raw.finished, reason: String(raw.reason || "incomplete")};
 }
 
-function parseRace(data) {
+function readTrack(data) {
   if (!data || !data.track || !['centre', 'left', 'right'].every(side => pointList(data.track[side]))) {
     throw new Error('This replay needs a centreline and two track edges.');
   }
   if (data.track.left.length !== data.track.right.length || data.track.centre.length !== data.track.left.length) {
     throw new Error('The track edges must align with the centreline samples.');
   }
-  return {track: data.track, seed: data.seed, baseline: readRun(data.baseline, 'ghost', data.joints), challenger: readRun(data.challenger, 'trained', data.joints)};
+  return data.track;
+}
+
+function parseRace(data) {
+  return {track: readTrack(data), seed: data.seed, baseline: readRun(data.baseline, 'ghost', data.joints), challenger: readRun(data.challenger, 'trained', data.joints)};
 }
 
 function frameInterval(frames, time) {
@@ -420,7 +424,7 @@ function resultsList(missing,training){
       time.setAttribute('aria-label','Place '+place+' · '+entry.run.time.toFixed(2)+' seconds');
     }else time.textContent='DNF';
     const details=document.createElement('small');details.className='field-gap';
-    details.textContent=entry.run.finished?(wins.includes(entry)?'Fastest lap':'+'+(entry.run.time-fastest).toFixed(2)+' s'):entry.run.reason;
+    details.textContent=entry.run.finished?(wins.includes(entry)?'Fastest lap':'+'+(entry.run.time-fastest).toFixed(2)+' s'):entry.run.reason+' · '+entry.run.time.toFixed(2)+' s';
     row.append(select,time,details);target.append(row);
   }
   const unavailable=element('field-unavailable');
@@ -658,7 +662,8 @@ ui.upload.addEventListener('change',async()=>{
     if(files.reduce((sum,f)=>sum+f.size,0)>50e6)throw new Error('Choose replay files totalling under 50 MB.');
     const raws=await Promise.all(files.map(async f=>JSON.parse(await f.text())));
     if(request!==sourceRequest)return;
-    if(files.length===1)loadRace(raws[0],true);
+    if(files.length===1 && Array.isArray(raws[0]?.field))loadSprintField(raws[0]);
+    else if(files.length===1)loadRace(raws[0],true);
     else {
       const fieldRuns=raws.map(parseRace);
       const seen=new Set();
@@ -793,7 +798,14 @@ async function openRun(id, replaceAddress=true){
       return;
     }
     leaveTraining();
-    if(id===':all'){
+    if(id===':sprint'){
+      const response=await fetch('./replays/sprint-transfer/race.json');
+      if(!response.ok)throw new Error('The sprint checkpoint race could not be loaded.');
+      const data=await response.json();
+      if(request!==sourceRequest)return;
+      loadSprintField(data);
+      setParent(null);
+    }else if(id===':all'){
       const reference=parseRace(await fetchReplay(''));
       const snapshots=await Promise.all([...runs.keys()].map(async key=>{
         try{
@@ -838,10 +850,11 @@ async function openRun(id, replaceAddress=true){
     if(replaceAddress){
       const url=new URL(location.href);
       clearTrainingParams(url);
-      if(id && id!==':all')url.searchParams.set('run',id);
+      if(id && !id.startsWith(':'))url.searchParams.set('run',id);
       else url.searchParams.delete('run');
       if(id==='')url.searchParams.set('view','featured');
       else if(id===':all')url.searchParams.set('view','all');
+      else if(id===':sprint')url.searchParams.set('view','sprint');
       else url.searchParams.delete('view');
       history.replaceState(null,'',url);
     }
@@ -853,6 +866,16 @@ async function openRun(id, replaceAddress=true){
   }
 }
 picker.addEventListener('change',()=>openRun(picker.value));
+function loadSprintField(data){
+  const track=readTrack(data);
+  if(!Array.isArray(data.field) || !data.field.length ||
+     data.field.some(e=>!e || typeof e.id!=='string' || !e.id || typeof e.label!=='string') ||
+     new Set(data.field.map(e=>e.id)).size!==data.field.length)throw new Error('Invalid checkpoint field.');
+  const entries=data.field.map(e=>({id:e.id,label:e.label,run:readRun(e.run,e.label,data.joints)}));
+  loadField({track,seed:data.seed},entries,[],true,null,false);
+  ui['track-title'].textContent='Sprint checkpoints on the circuit';
+  ui['track-detail'].textContent='Duck 28 steering · same start, seed '+data.seed;
+}
 let defaultTrainingRequest=null;
 async function startViewer(){
   const pending=sourceRequest;
@@ -880,9 +903,10 @@ async function startViewer(){
   if(sourceRequest!==pending)return;
   const params=new URLSearchParams(location.search);
   const view=params.get('view');
-  const requested=params.get('run') || (view==='featured'?'':view==='all'?(runs.size?':all':''):':training');
+  const views={featured:'', all:runs.size?':all':'', sprint:':sprint'};
+  const requested=params.get('run') || (Object.hasOwn(views,view)?views[view]:':training');
   if(!params.has('run') && !params.has('view'))defaultTrainingRequest=sourceRequest+1;
-  if(requested && ![':all',':training'].includes(requested) && !runs.has(requested)){
+  if(requested && ![':all',':training',':sprint'].includes(requested) && !runs.has(requested)){
     await openRun('',false);
     ui.message.textContent='That run is unavailable here. Showing the featured race.';
   }else{
