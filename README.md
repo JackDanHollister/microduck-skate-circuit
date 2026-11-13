@@ -1,6 +1,9 @@
 # Microduck Skate Circuit
 
-I wanted to see if my Microduck could find a faster way around a racing circuit on skates. I put it on the original AWS DeepRacer re:Invent 2018 course and gave it a centreline ghost to chase. The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
+I wanted to see if a Microduck could find a faster way around  the original AWS DeepRacer re:Invent 2018 course.
+
+
+The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
 
 **[Course driver scoreboard](https://jackdanhollister.github.io/microduck-skate-circuit/scoreboard.html)** · [Standings on GitHub](lineage/scoreboard.md) · [Enter your racer](docs/runs.md#enter-the-shared-scoreboard)
 
