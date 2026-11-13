@@ -325,7 +325,7 @@ function resultText(run){
   return run.finished ? lapClock(run.time,2) : 'DNF';
 }
 
-function loadRace(raw,custom=false){
+function loadRace(raw,custom=false,archived=false){
   const validated=parseRace(raw);
   pause();
   race=validated;
@@ -337,7 +337,7 @@ function loadRace(raw,custom=false){
   trackLength=race.track.centre.reduce((length,point,i,points)=>{
     const next=points[(i+1)%points.length];return length+Math.hypot(next[0]-point[0],next[1]-point[1]);
   },0);
-  ui['track-detail'].textContent=(custom?'Local replay':'AWS DeepRacer circuit')+' · '+trackLength.toFixed(1)+' m lap';
+  ui['track-detail'].textContent=(custom?'Local replay':archived?'Archived race':'AWS DeepRacer circuit')+' · '+trackLength.toFixed(1)+' m lap';
   ui.workspace.hidden=false;ui.message.textContent='';
   ui['challenger-result'].textContent=resultText(race.challenger);
   ui['baseline-result'].textContent=resultText(race.baseline);
@@ -349,7 +349,7 @@ function loadRace(raw,custom=false){
   ui['chart-end'].textContent=race.challenger.finished?'Finish':'Run ended';
   ui.video.pause();ui.video.removeAttribute('src');ui.video.load();
   // Only the checked-in film may be loaded. User-supplied replays are data only.
-  const hasVideo=!custom && raw.video==='replays/trackside.mp4';
+  const hasVideo=!custom && !archived && raw.video==='replays/trackside.mp4';
   ui['video-view'].hidden=!hasVideo;
   if(hasVideo)ui.video.src='./replays/trackside.mp4';
   if(angle!=='map')setAngle('map');
@@ -380,21 +380,95 @@ ui.upload.addEventListener('change',async()=>{
   try{
     if(file.size>50e6)throw new Error('Please use a replay smaller than 50 MB.');
     const raw=JSON.parse(await file.text());
-    if(request===sourceRequest)loadRace(raw,true);
+    if(request===sourceRequest){
+      loadRace(raw,true);
+      picker.value=':local';
+      activeRun=':local';
+      const option=picker.querySelector('[value=":local"]');
+      option.hidden=false;
+      element('run-parent').hidden=true;
+      const url=new URL(location.href);
+      url.searchParams.delete('run');
+      history.replaceState(null,'',url);
+    }
   }catch(error){if(request===sourceRequest)ui.message.textContent='Replay could not open. '+error.message;}
   ui.upload.value='';
 });
 new ResizeObserver(resize).observe(ui.screen);
 new ResizeObserver(resize).observe(ui['speed-plot']);
-async function loadDefault(){
+
+const picker=element('run-picker');
+const runs=new Map();
+const localOption=new Option('Opened file',':local');
+localOption.disabled=true;
+localOption.hidden=true;
+picker.add(localOption);
+let activeRun='';
+
+function setParent(run){
+  const target=element('run-parent');
+  target.replaceChildren();
+  target.hidden=!run;
+  if(!run)return;
+  if(!run.parent){target.textContent='First recorded driver';return;}
+  const link=document.createElement('a');
+  const url=new URL(location.href);
+  url.searchParams.set('run',run.parent);
+  link.href=url.href;
+  link.textContent=run.parent;
+  target.append('Parent: ',link);
+}
+
+async function openRun(id, replaceAddress=true){
   const request=++sourceRequest;
   try{
-    const response=await fetch('./replays/race.json');
-    if(!response.ok)throw new Error();
+    if(id && !runs.has(id))throw new Error('This run is not in the archive.');
+    const archived=Boolean(id);
+    const path=archived ? './lineage/'+encodeURIComponent(id)+'/race.json' : './replays/race.json';
+    const response=await fetch(path);
+    if(!response.ok)throw new Error('Could not fetch the replay.');
     const raw=await response.json();
-    if(request===sourceRequest)loadRace(raw);
-  }catch{
-    if(request===sourceRequest)ui.message.textContent='The bundled replay could not be loaded. Open a race JSON file above, or serve this folder over HTTP.';
+    if(request!==sourceRequest)return;
+    loadRace(raw,false,archived);
+    picker.value=id;
+    localOption.hidden=true;
+    activeRun=id;
+    setParent(runs.get(id));
+    if(replaceAddress){
+      const url=new URL(location.href);
+      if(id)url.searchParams.set('run',id);
+      else url.searchParams.delete('run');
+      history.replaceState(null,'',url);
+    }
+  }catch(error){
+    if(request===sourceRequest){
+      picker.value=activeRun;
+      ui.message.textContent=error.message+' Choose another recorded run or open a local replay.';
+    }
   }
 }
-loadDefault();
+picker.addEventListener('change',()=>openRun(picker.value));
+async function startViewer(){
+  const pending=sourceRequest;
+  try{
+    const response=await fetch('./lineage/index.json');
+    if(response.ok){
+      const index=await response.json();
+      for(const run of index){
+        if(typeof run.id!=='string' || !/^[a-z0-9][a-z0-9-]*$/.test(run.id))continue;
+        runs.set(run.id,run);
+        picker.add(new Option(run.id,run.id));
+      }
+    }
+  }catch{ /* The featured replay works in copies without a run archive. */ }
+  element('run-archive').hidden=runs.size===0;
+  if(sourceRequest!==pending)return;
+  const requested=new URLSearchParams(location.search).get('run') || '';
+  if(requested && !runs.has(requested)){
+    await openRun('',false);
+    ui.message.textContent='That run is unavailable here. Showing the featured race.';
+  }else{
+    await openRun(requested,false);
+  }
+}
+startViewer();

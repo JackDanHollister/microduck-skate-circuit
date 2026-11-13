@@ -1,0 +1,95 @@
+name: Train a racer
+
+on:
+  workflow_dispatch:
+    inputs:
+      parent:
+        description: Parent run ID from the run tree
+        required: true
+        default: jackdh-first-lap
+        type: string
+      run_id:
+        description: New run ID, such as yourname-wide-exit
+        required: true
+        type: string
+      generations:
+        description: Training generations
+        type: choice
+        options: ['1', '6', '12', '26']
+        default: '6'
+      save_branch:
+        description: Save the run on a new branch in this repository
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+      PARENT_ID: ${{ inputs.parent }}
+      RUN_ID: ${{ inputs.run_id }}
+      GENERATIONS: ${{ inputs.generations }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check parent and new run ID
+        run: |
+          python - <<'PY'
+          import os, run_tree
+          parent = run_tree.run_id(os.environ["PARENT_ID"])
+          child = run_tree.run_id(os.environ["RUN_ID"])
+          known = run_tree.records(run_tree.ARCHIVE)
+          if parent not in known or child in known:
+              raise SystemExit("Pick an existing parent and a new run ID.")
+          PY
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Train and evaluate from the parent
+        run: |
+          python race.py train --start-from "lineage/$PARENT_ID/driver.json" --generations "$GENERATIONS" --workers 2 --policy runs/driver.json --output runs/race.json
+          python race.py evaluate --policy runs/driver.json --workers 2 --report runs/evaluation.json
+          python run_tree.py add "$RUN_ID" --parent "$PARENT_ID" --driver runs/driver.json --replay runs/race.json --evaluation runs/evaluation.json
+          python run_tree.py check
+      - name: Save the driver, replay and results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: race-record
+          path: lineage/${{ inputs.run_id }}/
+          if-no-files-found: error
+
+  save-to-fork:
+    if: ${{ inputs.save_branch }}
+    needs: train
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    env:
+      RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name race-record --dir "lineage/$RUN_ID"
+      - name: Create a branch with the child run
+        run: |
+          branch="runs/$RUN_ID-$GITHUB_RUN_ID"
+          git switch -c "$branch"
+          python run_tree.py index
+          python run_tree.py check
+          git add -- "lineage/$RUN_ID" lineage/index.md lineage/index.json
+          git -c user.name=github-actions -c "user.email=41898282+github-actions[bot]@users.noreply.github.com" commit -m "feat(runs): record $RUN_ID"
+          git push origin "HEAD:refs/heads/$branch"
+          echo "[Open your run tree on GitHub](https://github.com/$GITHUB_REPOSITORY/blob/$branch/lineage/index.md)" >> "$GITHUB_STEP_SUMMARY"

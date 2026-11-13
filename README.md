@@ -12,29 +12,56 @@ On the featured start, the duck skated a clean **27.54 s** lap. The ghost took *
 
 I tried 16 more starts that the trainer hadn’t used. The challenger beat the ghost on all 15 laps where both finished. On the other start the challenger fell. The ghost finished all 16. Median times for completed laps were 27.95 s for the challenger and 29.55 s for the ghost. These are simulated results on this circuit. [All 16 results](replays/evaluation.json)
 
+## Race from a fork
+
+Choose **Fork** on GitHub, then **Actions → Train a racer** in your fork. Pick a parent driver and a new run ID. The job gives you a replay to watch and can save the child on a branch in your fork. [Browse the run tree](lineage/index.md) · [How to record and share a run](docs/runs.md)
+
 ## Try your own duck
 
-I tested the simulator on Linux with Python 3.12. The physics and training run on the CPU. The first run fetches the public roller model from Hugging Face and checks its checksum.
+The [race viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) opens straight away in a browser. To run the simulation or train a driver, I use a Linux x86-64 machine with Git, Python 3.12 and a CPU. You can run it on a laptop. The first run needs internet access to download Pollen's roller policy; the download is public and is cached for later runs.
+
+### 1. Get the project
+
+If you plan to share your own runs, [fork this repo](https://github.com/JackDanHollister/microduck-skate-circuit/fork) first. On your fork, use **Code → HTTPS** and use that URL in the clone command below. To try my version as it is:
 
 ```bash
 git clone https://github.com/JackDanHollister/microduck-skate-circuit.git
 cd microduck-skate-circuit
+```
+
+### 2. Set up Python
+
+From that folder, create and activate a virtual environment, then install the simulator.
+
+```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+```
+
+If `python3.12` is missing or your system Python cannot create a virtual environment, [install uv](https://docs.astral.sh/uv/getting-started/installation/) and run `uv venv --python 3.12 --seed .venv` in place of the first line. It can download Python 3.12 and includes pip. When you return in a new terminal, change into the repo and run `source .venv/bin/activate` again.
+
+### 3. Run a lap and watch it
+
+```bash
 python race.py replay --seed 1 --output runs/my-lap.json
 ```
 
-Open **[the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/)** and choose **Open replay** to watch your JSON. Your file opens locally in the browser. To run the viewer from the clone, use `python -m http.server 8000` and open `http://localhost:8000`.
+The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replay** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch on the overhead map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
 
-To train another driver and compare it with the same ghost:
+You can also serve the viewer from your clone. Run `python -m http.server 8000 --bind 127.0.0.1` in the repo root, open [localhost:8000](http://localhost:8000), then use **Open replay**. Press Ctrl+C in the terminal to stop the server.
+
+### 4. Train a driver
+
+Pick a parent in the [run tree](lineage/index.md). Here's how to start from my first published driver, write your results under `runs/` and compare the new driver with the centreline ghost on fresh starts:
 
 ```bash
-python race.py train --workers 4 --generations 6 --policy runs/my-driver.json --output runs/my-race.json
+python race.py train --start-from lineage/jackdh-first-lap/driver.json \
+  --workers 4 --generations 6 --policy runs/my-driver.json --output runs/my-race.json
 python race.py evaluate --policy runs/my-driver.json --workers 4 --report runs/my-results.json
 ```
 
-You can also copy [my driver settings](driver.json), change the six speed or line-offset values, and pass the copy to `python race.py replay --policy runs/my-driver.json --output runs/my-race.json`. The offsets are in metres, positive to the left of the centreline. Try changing one sector and watching where the ducks pull apart.
+`my-driver.json` contains the settings you trained, `my-race.json` opens in the viewer, and `my-results.json` records the evaluation. Use `--workers 1` on a small machine or if you want to leave cores free. To keep the parent and child together on GitHub, follow [Share a run from your fork](docs/runs.md).
 
 ## How the lap works
 

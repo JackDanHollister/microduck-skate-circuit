@@ -142,22 +142,42 @@ class Driver:
     def constant(cls, speed=0.37, lookahead=0.6, gain=0.8):
         return cls([speed] * SECTORS, [0.0] * SECTORS, lookahead, gain)
 
+    def __post_init__(self):
+        if len(self.speed) != len(self.offset) or len(self.speed) not in (6, 12):
+            raise ValueError(
+                "Driver needs matching speed and offset lists for 6 or 12 sectors"
+            )
+        if not np.isfinite(self.vector()).all() or self.lookahead <= 0:
+            raise ValueError(
+                "Driver values must be finite and lookahead must be positive"
+            )
+
+    def resample(self, sectors):
+        """Keep the same line and speeds while giving the learner more control points."""
+        sample = [i / sectors for i in range(sectors)]
+        speed = [self.interpolate(self.speed, along, 1.0) for along in sample]
+        offset = [self.interpolate(self.offset, along, 1.0) for along in sample]
+        return Driver(speed, offset, self.lookahead, self.turn_gain)
+
     def vector(self):
         return np.r_[self.speed, self.offset, self.lookahead, self.turn_gain]
 
     @classmethod
     def from_vector(cls, v):
+        sectors = (len(v) - 2) // 2
+        if 2 * sectors + 2 != len(v):
+            raise ValueError("Driver parameter vector has the wrong length")
         return cls(
-            v[:SECTORS].tolist(),
-            v[SECTORS : 2 * SECTORS].tolist(),
+            v[:sectors].tolist(),
+            v[sectors : 2 * sectors].tolist(),
             float(v[-2]),
             float(v[-1]),
         )
 
     def interpolate(self, array, s, length):
-        phase = (s % length) * SECTORS / length
+        phase = (s % length) * len(array) / length
         i = int(phase)
-        return array[i] + (phase - i) * (array[(i + 1) % SECTORS] - array[i])
+        return array[i] + (phase - i) * (array[(i + 1) % len(array)] - array[i])
 
     def command(self, track, s, xy, heading):
         ahead = s + self.lookahead
@@ -335,12 +355,25 @@ def main():
     parser.add_argument(
         "--report", type=Path, default=ROOT / "replays" / "evaluation.json"
     )
+    parser.add_argument(
+        "--start-from", type=Path, help="Train a descendant of this saved driver"
+    )
+    parser.add_argument(
+        "--sectors",
+        type=int,
+        choices=[6, 12],
+        help="Number of speed and line control points",
+    )
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--workers", type=int, default=min(os.cpu_count() or 1, 8))
     parser.add_argument("--generations", type=int, default=6)
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be a positive integer")
+    if args.mode != "train" and (
+        args.start_from is not None or args.sectors is not None
+    ):
+        parser.error("--start-from and --sectors are training options")
     filename = str(args.track.resolve())
     base = Driver.constant()
     if args.mode == "baseline":
@@ -353,7 +386,23 @@ def main():
         )
         return
     if args.mode == "train":
-        best, history = train(filename, base, args.workers, args.generations)
+        if args.start_from or args.sectors:
+            initial = (
+                Driver(**json.loads(args.start_from.read_text())["driver"])
+                if args.start_from
+                else base
+            )
+            from refine import optimize
+
+            best, history = optimize(
+                filename,
+                initial,
+                args.workers,
+                args.generations,
+                args.sectors or len(initial.speed),
+            )
+        else:
+            best, history = train(filename, base, args.workers, args.generations)
         save_json(args.policy, {"driver": asdict(best), "history": history})
     else:
         best = Driver(**json.loads(args.policy.read_text())["driver"])
