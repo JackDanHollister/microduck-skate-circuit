@@ -1,22 +1,52 @@
 [
   {
     "id": "jackdh-corner",
-    "parent": "jackdh-round-two"
+    "parent": "jackdh-round-two",
+    "score": {
+      "finishes": 15,
+      "median_ms": 26801,
+      "best_ms": 26458,
+      "place": 3
+    }
   },
   {
     "id": "jackdh-first-lap",
-    "parent": null
+    "parent": null,
+    "score": {
+      "finishes": 15,
+      "median_ms": 27955,
+      "best_ms": 27606,
+      "place": 5
+    }
   },
   {
     "id": "jackdh-pace",
-    "parent": "jackdh-round-two"
+    "parent": "jackdh-round-two",
+    "score": {
+      "finishes": 16,
+      "median_ms": 27387,
+      "best_ms": 26717,
+      "place": 2
+    }
   },
   {
     "id": "jackdh-round-two",
-    "parent": "jackdh-first-lap"
+    "parent": "jackdh-first-lap",
+    "score": {
+      "finishes": 15,
+      "median_ms": 27756,
+      "best_ms": 27312,
+      "place": 4
+    }
   },
   {
     "id": "jackdh-stability",
-    "parent": "jackdh-round-two"
+    "parent": "jackdh-round-two",
+    "score": {
+      "finishes": 16,
+      "median_ms": 26333,
+      "best_ms": 26020,
+      "place": 1
+    }
   }
 ]

@@ -2,6 +2,14 @@
 
 I keep each driver with the one it came from, the replay you can watch and every start I used to evaluate it. Pick any driver in the [run tree](../lineage/index.md) and you can start your own branch of the experiment. A GitHub fork gives you your own copy of the whole tree.
 
+## Enter the shared scoreboard
+
+1. **Fork and train.** Pick a parent from the [scoreboard](../lineage/scoreboard.md). In your fork, open **Actions → Train a racer → Run workflow**. Give your runner a unique ID (for example `yourname-late-braker`) and tick **Save each run on a new branch**. The workflow trains, scores and records it.
+2. **Submit the saved branch.** From the job summary, open the run branch and create a pull request to `JackDanHollister/microduck-skate-circuit` on `main`. Include the run folder and the generated files in `lineage/`. Say what you trained and which parent you started from.
+3. **See where it places.** The pull request check reruns the scored drivers in the simulator. Once the run is merged, it appears on the main [live scoreboard](https://jackdanhollister.github.io/microduck-skate-circuit/scoreboard.html). The board on your fork shows the runs merged into your own Pages branch.
+
+The course-driver board uses the standard `driver.json`, Pollen’s roller, a standing start and seeds 1001–1016. A fall, timeout or departure from the track uses up that start. Most finishes wins, then the lowest median across finished laps. Scores matching to the millisecond share a place. The fastest evaluation lap is shown for interest. **Watch** opens the runner’s separately recorded replay. Rolling starts, custom skating weights and 64-start experiments have their own comparisons in the viewer.
+
 ## Run it on GitHub
 
 Open **Actions → Train a racer → Run workflow** on your own fork. If Actions are disabled on a newly forked repository, enable them on its Actions tab first. Enter a parent from the [run tree](../lineage/index.md) and a new ID such as `yourname-wide-exit`. **Independent searches** defaults to **one**. The generations setting applies to each search.
@@ -16,7 +24,7 @@ Choose **three** to run three separate searches from the same parent using GitHu
 
 The single search keeps your ID as entered and uses the balanced strategy with seed 20261113 and the parent’s sector count. After the jobs finish, open the workflow summary. Each successful child has its own `race-record-<child-id>` artifact containing the driver, lap replay and results on the same evaluation starts. Compare finish counts and median clean times before picking one. Download the artifact, unzip it and choose its `race.json` in **Open replays**.
 
-Tick **Save each run on a new branch** to keep the results in your fork. Each child gets its own branch and a link to its tree in the save job summary. You can merge just the one you want, send a pull request upstream, or share all three. If branch saving is disabled by your fork’s Actions permissions, download the artifacts, copy each one’s four files into `lineage/<child-id>/`, run `python run_tree.py index` and `python run_tree.py check`, then commit those run folders and the two index files.
+Tick **Save each run on a new branch** to keep the results in your fork. Each child gets its own branch and a link to its tree in the save job summary. You can merge just the one you want, send a pull request upstream, or share all three. If branch saving is disabled by your fork’s Actions permissions, download the artifacts, copy each one’s four files into `lineage/<child-id>/`, run `python run_tree.py index` and `python run_tree.py check`, then commit those run folders and the two indexes and the scoreboard.
 
 ## Start from a saved driver
 
@@ -60,7 +68,7 @@ python run_tree.py add "$run_id" --parent "$parent" \
   --evaluation "runs/$run_id/evaluation.json"
 python run_tree.py check
 
-git add -- "lineage/$run_id" lineage/index.md lineage/index.json
+git add -- "lineage/$run_id" lineage/index.md lineage/index.json lineage/scoreboard.md
 git commit -m "feat(runs): record my wide exit driver"
 git push -u origin HEAD
 ```
@@ -77,4 +85,4 @@ The GitHub tree links to the checkpoint, replay and individual results. You can 
 
 Each run folder is a snapshot and the ID is permanent. Use a new ID for another attempt. Each run card records the simulator and course hashes and, when they match the checkout, its Git commit. If you change either, commit the changes before recording the run to include that revision. The check command reads the local files, checks their hashes and the saved results, and verifies that every parent exists and every driver belongs to the same tree. To repeat a result independently, run `race.py replay` and `race.py evaluate` on the saved driver. Use its recorded replay seed and evaluation seeds for comparisons.
 
-If two branches add runs at the same time, keep both run folders on merge. To resolve a conflict in the generated indexes, run `python run_tree.py index`, then `python run_tree.py check` and stage the two index files. An ID collision needs a fresh child ID.
+If two branches add runs at the same time, keep both run folders on merge. To resolve a conflict in the generated indexes, run `python run_tree.py index`, then `python run_tree.py check` and stage the two indexes and the scoreboard. An ID collision needs a fresh child ID.

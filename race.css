@@ -106,3 +106,31 @@ h2{font:700 26px/1.05 var(--numeric);margin:0}
 .training-heat-nav button:disabled { opacity:.5; cursor:default; }
 .training-detail { margin:10px 0 0; color:var(--soft); font-size:13px; line-height:1.45; font-variant-numeric:tabular-nums; }
 @media(max-width:430px){.views button {padding:7px 8px;} #follow-driver {max-width:145px;} .player-bar {flex-wrap:wrap;} }
+
+/* Course driver standings */
+.board-brand {color:var(--ink);text-decoration:none}
+.board {max-width:1000px}
+.board-rules {max-width:710px;color:var(--soft);line-height:1.5;margin:0 0 22px}
+.board-table-wrap {background:white;border:1px solid var(--border);border-radius:8px;overflow-x:auto}
+.board-table {width:100%;border-spacing:0;font-variant-numeric:tabular-nums;text-align:left}
+.board-table :is(th,td) {padding:13px 14px}
+.board-table thead {font-size:13px;color:var(--soft);background:#eaeae3}
+.board-table tbody :is(th,td) {border-top:1px solid var(--border)}
+.board-table .numeric {text-align:right;white-space:nowrap}
+.board-runner {overflow-wrap:anywhere}
+.board-runner small {display:block;font-size:12px;font-weight:400;color:var(--soft);margin-top:4px}
+.board a:not(.brand), .board-link {color:var(--ink);text-underline-offset:3px}
+.board-table tbody td:first-child {font:700 25px var(--numeric)}
+.board-leader td:first-child {color:var(--hot);box-shadow:inset 3px 0 var(--hot)}
+.board-links {display:flex;flex-wrap:wrap;gap:8px 25px;font-weight:600}
+.board-link {font-weight:600;font-size:14px}
+@media(max-width:620px) {
+  .board .best-lap {display:none}
+  .board-table :is(th,td) {padding:10px 5px;font-size:13px}
+  .board-table tbody td:first-child {font-size:19px}
+  .board-table .board-runner {max-width:120px}
+}
+@media(max-width:560px) {
+  .masthead-inner:has(.board-link) {flex-wrap:wrap;gap:7px;padding:9px 0}
+  .masthead-actions:has(.board-link) {flex-wrap:wrap;gap:10px}
+}

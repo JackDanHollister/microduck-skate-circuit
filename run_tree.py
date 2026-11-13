@@ -8,6 +8,7 @@ import re
 import subprocess
 import tempfile
 from collections import defaultdict
+from decimal import ROUND_HALF_UP, Decimal
 from hashlib import sha256
 from pathlib import Path
 from statistics import median
@@ -19,6 +20,8 @@ FIRST = "jackdh-first-lap"
 ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 TRACK = ROOT / "data" / "reinvent2018.json"
 LEAGUE_STRATEGIES = ("pace", "corner", "stability")
+SCORE_SEEDS = range(1001, 1017)
+INDEX_FILES = ("index.md", "index.json", "scoreboard.md")
 
 
 def run_id(value):
@@ -186,7 +189,7 @@ def records(archive):
     )
     entries = {}
     for folder in sorted(archive.iterdir()):
-        if folder.name.startswith(".") or folder.name in ("index.md", "index.json"):
+        if folder.name.startswith(".") or folder.name in INDEX_FILES:
             continue
         require(
             folder.is_dir() and not folder.is_symlink(), f"Unexpected entry at {folder}"
@@ -207,7 +210,7 @@ def index_text(entries):
         "",
         "Each driver sits under the driver it started from. The lap is the",
         "recorded replay. Finishes and the median cover the evaluation starts listed",
-        "in each run’s results. [Add your run](../docs/runs.md).",
+        "in each run’s results. [Scoreboard](scoreboard.md) · [Add your run](../docs/runs.md).",
         "",
     ]
     children = defaultdict(list)
@@ -237,11 +240,63 @@ def index_text(entries):
     return "\n".join(lines) + "\n"
 
 
+def milliseconds(seconds):
+    return int((Decimal(str(seconds)) * 1000).to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def standings(entries):
+    scored = []
+    for ident, (parent, _, evaluation, _) in entries.items():
+        attempts = evaluation["attempts"]
+        if sorted(a["seed"] for a in attempts) != list(SCORE_SEEDS):
+            continue
+        times = [a["time"] for a in attempts if a["reason"] == "finished"]
+        scored.append({
+            "id": ident, "parent": parent, "finishes": len(times),
+            "median_ms": milliseconds(median(times)) if times else None,
+            "best_ms": milliseconds(min(times)) if times else None,
+        })
+    scored.sort(key=lambda row: (-row["finishes"], row["median_ms"] or 0, row["id"]))
+    previous, place = None, None
+    for position, row in enumerate(scored, 1):
+        key = (row["finishes"], row["median_ms"])
+        if key != previous:
+            place = position if row["finishes"] else None
+        row["place"] = place
+        previous = key
+    return scored
+
+
+def scoreboard_text(rows):
+    lines = [
+        "# Course driver scoreboard", "",
+        "I run each course-trained driver with Pollen’s roller from a standing start on the same "
+        "16 starts (seeds 1001–1016). More finishes rank first, then the quicker median finished lap. "
+        "Matching scores to the millisecond share a place. A driver needs one finish to place.", "",
+        "[Watch the 3D replays](https://jackdanhollister.github.io/microduck-skate-circuit/scoreboard.html)"
+        " · [Enter a racer](../docs/runs.md#enter-the-shared-scoreboard) · [Run tree](index.md)", "",
+        "| Place | Runner | Parent | Finishes | Median lap | Best lap |",
+        "| ---: | --- | --- | ---: | ---: | ---: |",
+    ]
+    for row in rows:
+        ident, parent = row["id"], row["parent"]
+        ancestor = f"[{parent}]({parent}/driver.json)" if parent else "—"
+        times = ["—" if row[k] is None else f"{row[k] / 1000:.3f} s" for k in ("median_ms", "best_ms")]
+        lines.append(f"| {row['place'] or '—'} | [{ident}]({ident}/evaluation.json) | {ancestor} | "
+                     f"{row['finishes']}/{len(SCORE_SEEDS)} | {times[0]} | {times[1]} |")
+    if not rows:
+        lines.extend(["", "No runs have a standard 16-start evaluation yet."])
+    return "\n".join(lines) + "\n"
+
+
 def indexes(entries):
-    catalog = [{"id": ident, "parent": entries[ident][0]} for ident in sorted(entries)]
+    rows = standings(entries)
+    scores = {row["id"]: {k: v for k, v in row.items() if k not in ("id", "parent")} for row in rows}
+    catalog = [{"id": ident, "parent": entries[ident][0], "score": scores.get(ident)} for ident in sorted(entries)]
     return {
         "index.md": index_text(entries),
         "index.json": json.dumps(catalog, indent=2) + "\n",
+        "scoreboard.md": scoreboard_text(rows),
     }
 
 
@@ -258,6 +313,28 @@ def replace_text(target, content):
 def write_index(archive):
     for name, content in indexes(records(archive)).items():
         replace_text(archive / name, content)
+
+
+def verify_scores(archive, workers):
+    """Re-score archived course drivers using the checked-out simulator and stock roller."""
+    from multiprocessing import Pool
+    from race import Driver, episode
+
+    entries = records(archive)
+    jobs, expected = [], []
+    for row in standings(entries):
+        ident = row["id"]
+        settings = Driver(**load(archive / ident / "driver.json")["driver"]).vector()
+        for attempt in entries[ident][2]["attempts"]:
+            jobs.append((str(TRACK), settings, attempt["seed"]))
+            expected.append((ident, attempt))
+    require(workers > 0, "Use a positive worker count.")
+    with Pool(workers) as pool:
+        for (ident, saved), actual in zip(expected, pool.imap(episode, jobs), strict=True):
+            require(actual["reason"] == saved["reason"] and abs(actual["time"] - saved["time"]) <= 0.00001,
+                    f"{ident} differs on seed {saved['seed']}: saved {saved['reason']} at {saved['time']} s, "
+                    f"simulated {actual['reason']} at {actual['time']} s.")
+    print(f"Reproduced {len(jobs)} scored attempts.")
 
 
 def provenance():
@@ -376,6 +453,8 @@ def main():
         "check", help="check the run cards, hashes, results, ancestry and GitHub index"
     )
     actions.add_parser("index", help="rebuild the GitHub index after merging branches")
+    verify = actions.add_parser("verify-scores", help="simulate the scoreboard starts again from the saved drivers")
+    verify.add_argument("--workers", type=int, default=2)
     args = cli.parse_args()
     try:
         if args.action == "add":
@@ -389,6 +468,8 @@ def main():
             add_league(ARCHIVE, args.prefix, args.parent, args.from_dir)
         elif args.action == "index":
             write_index(ARCHIVE)
+        elif args.action == "verify-scores":
+            verify_scores(ARCHIVE, args.workers)
         else:
             for name, content in indexes(records(ARCHIVE)).items():
                 require(

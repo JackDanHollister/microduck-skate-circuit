@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f3ed">
+  <title>Course driver scoreboard · Microduck Skate Circuit</title>
+  <link rel="stylesheet" href="race.css">
+  <script src="scoreboard.js" defer></script>
+</head>
+<body>
+  <header class="masthead"><div class="masthead-inner">
+    <a class="brand board-brand" href="./"><span class="flag" aria-hidden="true"></span>Microduck</a>
+    <nav class="masthead-actions" aria-label="Circuit navigation"><a href="./" class="train-link">Race viewer</a><a id="enter" class="load-control board-brand" href="https://github.com/JackDanHollister/microduck-skate-circuit/blob/main/docs/runs.md#enter-the-shared-scoreboard">Enter a racer ↗</a></nav>
+  </div></header>
+  <main class="board">
+    <div class="intro"><div class="kicker"><span></span> Skate Circuit · re:Invent 2018</div><h1>Scoreboard<span>.</span></h1></div>
+    <p class="board-rules">Each course-trained driver races the same 16 starts with Pollen’s roller. Most finishes wins, then the fastest median lap. Equal scores to the millisecond share a place.</p>
+    <div id="board-status" role="status">Loading standings…</div>
+    <div id="table-wrap" class="board-table-wrap" hidden>
+      <table class="board-table" aria-label="Course driver standings">
+        <thead><tr><th scope="col">Place</th><th scope="col">Runner</th><th scope="col" class="numeric">Finishes</th><th scope="col" class="numeric">Median lap</th><th scope="col" class="numeric best-lap">Best lap</th><th scope="col">Replay</th></tr></thead>
+        <tbody id="standings"></tbody>
+      </table>
+    </div>
+    <p class="board-links"><a href="./?view=all">Race the saved ghosts together ↗</a><a id="github-board" href="https://github.com/JackDanHollister/microduck-skate-circuit/blob/main/lineage/scoreboard.md">Scoreboard on GitHub ↗</a></p>
+    <noscript>Open the scoreboard on GitHub to see the standings.</noscript>
+  </main>
+</body></html>

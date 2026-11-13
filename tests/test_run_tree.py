@@ -87,5 +87,27 @@ class RunTreeTest(unittest.TestCase):
         self.assertEqual(list(self.archive.iterdir()), [self.root_folder])
 
 
+    def test_scoreboard_ranks_matching_starts_and_shares_ties(self):
+        def entry(times, first_seed=1001):
+            attempts = [
+                {"seed": i, "time": t or 4.0, "reason": "finished" if t else "fall"}
+                for i, t in enumerate(times, first_seed)
+            ]
+            return None, {}, {"attempts": attempts}, 1
+
+        rows = tree.standings({
+            "fast": entry([10] * 15 + [None]), "steady-a": entry([25.0001] * 16),
+            "steady-b": entry([25.0004] * 16), "steady-c": entry([25.0005] * 16),
+            "incomplete": entry([3] * 15), "different": entry([1] * 16, 50),
+            "fell": entry([None] * 16),
+        })
+        self.assertEqual([(r["id"], r["place"]) for r in rows],
+                         [("steady-a", 1), ("steady-b", 1), ("steady-c", 3), ("fast", 4), ("fell", None)])
+        self.assertEqual(rows[2]["median_ms"], 25001)
+        self.assertIsNone(rows[-1]["median_ms"])
+        self.assertIsNone(rows[-1]["best_ms"])
+        self.assertIn("No runs", tree.scoreboard_text([]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -135,7 +135,7 @@ jobs:
           git switch -c "$branch"
           python run_tree.py index
           python run_tree.py check
-          git add -- "lineage/$RUN_ID" lineage/index.md lineage/index.json
+          git add -- "lineage/$RUN_ID" lineage/index.md lineage/index.json lineage/scoreboard.md
           git -c user.name=github-actions -c "user.email=41898282+github-actions[bot]@users.noreply.github.com" commit -m "feat(runs): record $RUN_ID"
           git push origin "HEAD:refs/heads/$branch"
           echo "[Open your run tree on GitHub](https://github.com/$GITHUB_REPOSITORY/blob/$branch/lineage/index.md)" >> "$GITHUB_STEP_SUMMARY"

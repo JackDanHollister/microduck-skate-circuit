@@ -2,6 +2,10 @@
 
 I wanted to see if my Microduck could find a faster way around a racing circuit on skates. I put it on the original AWS DeepRacer re:Invent 2018 course and gave it a centreline ghost to chase. The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
 
+**[Course driver scoreboard](https://jackdanhollister.github.io/microduck-skate-circuit/scoreboard.html)** · [Standings on GitHub](lineage/scoreboard.md) · [Enter your racer](docs/runs.md#enter-the-shared-scoreboard)
+
+Pick a parent, give your runner its own ID and train it for this circuit. Each ranked driver uses Pollen’s roller on the same 16 standing starts. I rank by finishes first, then median lap time. You can follow a runner’s parent and watch its recorded lap from the board.
+
 **[Watch the training laps in 3D](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training)**. Pick a search, generation and start seed, then press **Play**. I like watching ten candidates through the same bend to see whose skates step out. The **Drivers** menu lets you show all 30 from that start. Copy the URL to share the group you are watching.
 
 Duck 28 set the quickest lap I saw during training, 25.04 s. It came in generation nine of the cornering search. Four of the other nine ducks in its group of ten went off track on that start. [Follow Duck 28 through the bend](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training&strategy=corner&generation=9&seed=182&heat=3) · [Ten-second clip](https://jackdanhollister.github.io/microduck-skate-circuit/replays/duck-28-corner.mp4)
