@@ -2,6 +2,7 @@
 
 I wanted to see if a Microduck could find a faster way around  the original AWS DeepRacer re:Invent 2018 course.
 
+I ran the races in MuJoCo on my i9-14900K workstation. Pollen’s roller policy handles the legs. I trained the driver to choose a racing line, carry speed through the bends and steer back on course. I ran three searches at once with six CPU workers each, for 3,000 simulated attempts in the main batch.
 
 The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
 
