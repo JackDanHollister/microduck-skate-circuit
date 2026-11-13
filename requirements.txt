@@ -1,0 +1,1 @@
+microduck-arena @ https://github.com/pollen-robotics/microduck-arena/releases/download/v0.7.0/microduck_arena-0.7.0-py3-none-any.whl#sha256=6404e09e55b77ac0a3289a25110d7d901bc12ed493778394ec003ab264f3b1f5

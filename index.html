@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f3ed">
+  <title>Microduck Skate Circuit</title>
+  <link rel="stylesheet" href="race.css">
+  <script src="race.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand"><span class="flag" aria-hidden="true"></span>Microduck</div>
+      <div class="masthead-actions"><a class="train-link" href="https://github.com/JackDanHollister/microduck-skate-circuit#readme">Train your duck ↗</a><label class="load-control"><span aria-hidden="true">↑</span> Open replay<input id="upload" type="file" accept=".json,application/json" aria-label="Open a local race replay in JSON format"></label></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="intro">
+      <div class="kicker"><span></span> Reinforcement learning time trial</div>
+      <h1>Skate Circuit<span>.</span></h1>
+    </div>
+    <div id="message" role="status">Loading the recorded laps…</div>
+    <div class="workspace" id="workspace" hidden>
+      <section class="player" aria-label="Race replay">
+        <div class="player-bar">
+          <div><h2 id="track-title">re:Invent 2018</h2><p id="track-detail">AWS DeepRacer circuit</p></div>
+          <div class="views" aria-label="Camera angle">
+            <button id="map-view" type="button" aria-pressed="true">Overhead</button>
+            <button id="video-view" type="button" aria-pressed="false" hidden>Trackside</button>
+          </div>
+        </div>
+        <div class="screen" id="screen">
+          <canvas id="track" role="img" aria-label="Overhead map of the skating duck, its racing line and the centreline ghost"></canvas>
+          <video id="video" muted playsinline preload="none" hidden aria-label="Trackside view of the recorded simulation"></video>
+        </div>
+        <div class="controls">
+          <button id="play" class="play" type="button" aria-label="Play replay"><span class="play-symbol" aria-hidden="true"></span><span id="play-label">Play</span></button>
+          <div class="seek-control"><input id="seek" aria-label="Replay position" type="range" min="0" max="1" step=".01" value="0"><span class="clock"><span id="clock">0:00.0</span><span class="divider"> / </span><span id="duration">0:00.0</span></span></div>
+          <select id="rate" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+        </div>
+        <div class="map-options" id="map-options">
+          <label><input type="checkbox" id="ghost" checked> Centreline ghost</label>
+          <label><input type="checkbox" id="line" checked> Speed trail</label>
+          <div class="gradient-legend"><span>Slow</span><i></i><span>Fast</span></div>
+        </div>
+      </section>
+
+      <aside class="telemetry" aria-label="Lap telemetry">
+        <h2>Lap comparison</h2>
+        <div class="result"><div class="legend-name"><i class="racer-mark"></i>Trained duck</div><span id="challenger-result" class="time">—</span></div>
+        <div class="result"><div class="legend-name"><i class="ghost-mark"></i>Centreline ghost</div><span id="baseline-result" class="time">—</span></div>
+        <p id="difference" class="difference"></p>
+        <div class="speed-panel">
+          <h2>Duck speed</h2>
+          <div class="speed-reading"><span id="speed">0.00</span><small>m/s</small></div>
+          <canvas id="speed-plot" role="img" aria-label="Duck speed across the lap, with a cursor at the current replay time"></canvas>
+          <div class="chart-labels"><span>Start</span><span id="chart-end">Finish</span></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>
