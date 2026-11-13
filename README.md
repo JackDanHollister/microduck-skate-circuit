@@ -2,15 +2,23 @@
 
 I wanted to see if my Microduck could find a faster way around a racing circuit on skates. I put it on the original AWS DeepRacer re:Invent 2018 course and gave it a centreline ghost to chase. The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
 
-**[Watch all the ghosts race](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)**. Press **Play** to see the archived drivers share the same starting line and clock. Each duck has a colour and a number. The results beside the map show the fastest finisher on that recorded start. Pick a different run or hide a ghost to follow one through a corner.
+**[Watch the training laps in 3D](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training)**. Pick a search, generation and start seed, then press **Play**. I like watching ten candidates through the same bend to see whose skates step out. The **Drivers** menu lets you show all 30 from that start. Copy the URL to share the group you are watching.
 
-For a close-up of the duck on its skates, open the [featured replay](https://jackdanhollister.github.io/microduck-skate-circuit/?view=featured) and select **Trackside**.
+Duck 28 set the quickest lap I saw during training, 25.04 s. It came in generation nine of the cornering search. Four of the other nine ducks in its group of ten went off track on that start. [Follow Duck 28 through the bend](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training&strategy=corner&generation=9&seed=182&heat=3) · [Ten-second clip](https://jackdanhollister.github.io/microduck-skate-circuit/replays/duck-28-corner.mp4)
 
-[![Five recorded drivers together at 21.8 seconds, with Stability out in front](replays/ghost-field.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
+I also kept a five-duck race with the two earlier drivers and the three that came out of the parallel searches. You can watch their legs move in **3D**, switch to **Map** to compare their lines, or choose **Film** for the moving trackside camera. [Race the five saved drivers](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all) · [Play the trackside film](https://jackdanhollister.github.io/microduck-skate-circuit/replays/ghost-race.mp4)
+
+[![Stability leading the pack through a bend on the re:Invent circuit](replays/ghost-race.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
+
+## Where the training ghosts came from
+
+The original searches saved their random seeds and the selected driver after each generation. To get the full body motion, I repeated the searches in the same MuJoCo environment and recorded every candidate in the main training populations. All 30 generation checkpoints and their selection scores matched the originals.
+
+There are **3,000 candidate laps** across ten generations of Pace, Corner and Stability. Each group puts 30 candidates on the same start. Pace and Corner each tried three starts per generation and Stability tried four. Of those laps, 2,524 finished, 317 ended in a fall and 159 went off track. The viewer loads the selected group on demand. Each ghost uses the duck’s recorded body position, orientation and 14 joint angles. [Browse the 100 groups](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training) · [Recording code](record_training.py)
 
 ## Which duck wins?
 
-On the lap you can watch, **Stability** crosses first in **25.76 s**. Cornering takes 27.19 s and Pace takes 27.30 s. The map includes my first two drivers as well, so I can see where each generation gained or lost ground. [Race all five](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
+On the five-driver replay (start seed 1), **Stability** crosses first in **25.76 s**. Cornering takes 27.19 s and Pace takes 27.30 s. The field includes my first two drivers as well, so I can see where each generation gained or lost ground. [Race all five](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
 
 I picked **Cornering** as my featured driver. I ran Pace, Cornering and Stability as three separate ten-generation searches from the same parent, with different random seeds. Cornering and Pace finished all 48 selection starts. Stability finished 46. Cornering had the quicker typical lap of the two that finished them all. I froze its checkpoint before running a separate test. [Selection results](replays/parallel-selection.json)
 
@@ -30,7 +38,7 @@ Choose **Fork** on GitHub, then **Actions → Train a racer** in your fork. Pick
 
 ## Try your own duck
 
-The [race viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) opens straight away in a browser. To run the simulation or train a driver, I use a Linux x86-64 machine with Git, Python 3.12 and a CPU. You can run it on a laptop. The first run needs internet access to download Pollen's roller policy; the download is public and is cached for later runs.
+The [race viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) opens straight away in a browser. To run the simulation or train a driver, I use a Linux x86-64 machine with Git, Python 3.12 and a CPU. You can run it on a laptop. The first run needs internet access to download Pollen's roller policy, which is public and cached for later runs.
 
 ### 1. Get the project
 
@@ -59,7 +67,7 @@ If `python3.12` is missing or your system Python cannot create a virtual environ
 python race.py replay --seed 1 --output runs/my-lap.json
 ```
 
-The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replays** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch on the overhead map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
+The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replays** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch the recorded duck in 3D or follow its line on the map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
 
 You can also serve the viewer from your clone. Run `python -m http.server 8000 --bind 127.0.0.1` in the repo root, open [localhost:8000](http://localhost:8000), then use **Open replays**. Press Ctrl+C in the terminal to stop the server.
 
@@ -100,17 +108,30 @@ To keep all three replays in your fork, archive the league under the ID of the p
 
 My first driver split the track into six sectors, and round two used 12. A driver chooses a forward speed and an offset from the centreline at each one. It blends the settings between sectors, looks ahead to a point on the chosen line and asks Pollen's roller policy for a forward speed and turn rate. The driver reads the duck's position and heading from the simulator.
 
-I used cross-entropy search over complete episodes to train those settings, the lookahead distance and the turn response. Round two started from the first driver's settings and trained for 26 generations. A clean finish earns a time-based reward. A failed lap earns partial credit for progress. Eight gates must be crossed in order, and the simulation checks wheel-centre boundaries and falls. The white duck and blue ghost are separate runs from the same start, played against the same clock. [Simulation and training code](race.py)
+I used cross-entropy search over complete episodes to train those settings, the lookahead distance and the turn response. Round two started from the first driver's settings and trained for 26 generations. A clean finish earns a time-based reward. A failed lap earns partial credit for progress. Eight gates must be crossed in order, and the simulation checks wheel-centre boundaries and falls. The ghosts come from separate simulation runs with the same start seed and play against the same clock. [Simulation and training code](race.py)
+
+## Rebuild the training archive
+
+The published browser replay already includes the recorded poses. To reconstruct the ten original generations yourself, run this in the Python 3.12 environment above. The workers are a total budget shared across the three searches. For a shorter first try, set `--generations 1` and use a fresh output folder. The full archive is about 41 MB.
+
+```bash
+python record_training.py --workers 6 --generations 10 --output runs/rebuilt-training
+```
+
+It writes the selected generation groups, one centreline reference for each start seed, and an index with finish times, failures and file checksums. [Published archive index](training-replays/index.json)
 
 ## Make a trackside film
 
-The overhead view works with every replay. To make a film from a new replay on a machine with an EGL graphics driver:
+The browser draws the 3D poses directly from replay data. For a separate MP4 on a machine with an EGL graphics driver, install the rendering extras. The first command below films your own race, the second films the full saved field from the same circuit and start seed.
 
 ```bash
 python -m pip install -r requirements-render.txt
 MUJOCO_GL=egl python render_race.py runs/my-race.json runs/my-race.mp4
+MUJOCO_GL=egl python render_race.py lineage/index.json runs/all-ghosts.mp4 --field
 ```
 
 ## Credits
 
 This is a community Microduck experiment. The physics come from [Pollen’s Microduck Arena](https://github.com/pollen-robotics/microduck-arena/releases/tag/v0.7.0). The leg movements come from [Pollen’s roller policy](https://huggingface.co/pollen-robotics/microduck-policies/tree/1b56c396825c052a4e26e95cf2b8d8298af9e9b4). I converted the AWS route coordinates to JSON and used those points for the timing gates, track edges and replay. [Track source and notices](data/README.md)
+
+The browser robot uses Pollen Robotics’ Microduck meshes, adapted for animated replay under CC BY-NC-SA 4.0, and Pollen’s Apache 2.0 joint description. Three.js draws the track and ghosts in the browser. [Mesh attribution and licences](assets/duck-attribution.md) · [Three.js licence](vendor/three/LICENSE)

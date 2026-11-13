@@ -69,7 +69,9 @@ Open the branch on your fork. The new driver sits under its parent in `lineage/i
 
 ## Watch or check a saved run
 
-The public viewer opens with **All saved runs** on one map. Each numbered duck is a recorded lap. The viewer compares runs on the featured circuit with the same start seed. A fall is shown as a DNF. The fastest finisher wins that particular replay. You can also choose several local JSON files at once to compare compatible runs from other forks.
+The [saved-driver view](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all) shows the archived drivers together in 3D. Choose **Map** for their lines from above, or **Film** for the saved trackside recording. Each numbered duck is a separate simulated lap. Compare compatible runs from your own fork by selecting their JSON files together in **Open replays**.
+
+The default viewer opens on [training attempts](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training). Those groups hold the population candidates from the three original searches. A forked driver that you archive joins **Saved drivers**. Its checkpoint, replay and evaluation sit under its parent in your run tree.
 
 The GitHub tree links to the checkpoint, replay and individual results. You can download any replay JSON and open it in the browser viewer. On a Pages site that includes the run, add `?run=yourname-wide-exit` to the viewer URL to go straight to it. A fork can host its own viewer by opening **Settings → Pages → Deploy from a branch** and selecting the default branch and `/ (root)`. Use the URL GitHub gives your fork.
 

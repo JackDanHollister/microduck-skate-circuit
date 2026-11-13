@@ -13,7 +13,16 @@ let raceDuration = 0;
 let field = null;
 let elapsed = 0;
 let playing = false;
+const cameraParam = new URLSearchParams(location.search).get('camera');
+let preferredAngle = ({map:'map', film:'video'})[cameraParam] || 'scene';
 let angle = 'map';
+let scenePromise = null;
+let spectator = null;
+let sceneUnavailable = false;
+let sceneTrack = null;
+let sceneDrivers = [];
+let sceneEligible = false;
+let forFilm = false;
 let movieClockReady = false;
 let previousTick = null;
 let project = null;
@@ -35,7 +44,10 @@ function pointList(points) {
     points.every(p => Array.isArray(p) && p.length >= 2 && p.slice(0, 2).every(Number.isFinite));
 }
 
-function readRun(raw, name) {
+const poseJoints = ['left_hip_yaw','left_hip_roll','left_hip_pitch','left_knee','left_ankle',
+  'neck_pitch','head_pitch','head_yaw','head_roll','right_hip_yaw','right_hip_roll','right_hip_pitch','right_knee','right_ankle'];
+
+function readRun(raw, name, jointOrder=null) {
   if (!raw || !Array.isArray(raw.frames) || raw.frames.length < 2 || raw.frames.length > 100000 ||
       typeof raw.finished !== 'boolean' || !Number.isFinite(raw.time) || raw.time < 0) {
     throw new Error('Invalid ' + name + ' lap.');
@@ -56,7 +68,12 @@ function readRun(raw, name) {
     const b = frames[Math.min(i + 1, frames.length - 1)];
     return Math.hypot(b[1] - a[1], b[2] - a[2]) / (b[0] - a[0]);
   });
-  return {frames, speeds, time: raw.time, finished: raw.finished, reason: String(raw.reason || "incomplete")};
+  const joints = jointOrder || poseJoints;
+  const order = Array.isArray(joints) ? poseJoints.map(j => joints.indexOf(j)) : [];
+  const articulated = order.length===14 && order.every(i=>i>=0) && frames.every(frame=>
+    frame.length>=22 && Math.hypot(...frame.slice(4,8))>.5 &&
+    order.every(i=>Number.isFinite(frame[i+8])));
+  return {frames, speeds, order, articulated, time: raw.time, finished: raw.finished, reason: String(raw.reason || "incomplete")};
 }
 
 function parseRace(data) {
@@ -66,11 +83,10 @@ function parseRace(data) {
   if (data.track.left.length !== data.track.right.length || data.track.centre.length !== data.track.left.length) {
     throw new Error('The track edges must align with the centreline samples.');
   }
-  return {track: data.track, seed: data.seed, baseline: readRun(data.baseline, 'ghost'), challenger: readRun(data.challenger, 'trained')};
+  return {track: data.track, seed: data.seed, baseline: readRun(data.baseline, 'ghost', data.joints), challenger: readRun(data.challenger, 'trained', data.joints)};
 }
 
-function frameAt(run, time) {
-  const frames = run.frames;
+function frameInterval(frames, time) {
   let low = 0, high = frames.length - 1;
   while (low + 1 < high) {
     const middle = (low + high) >> 1;
@@ -79,11 +95,98 @@ function frameAt(run, time) {
   }
   const a = frames[low], b = frames[high];
   const blend = Math.max(0, Math.min(1, (time - a[0]) / (b[0] - a[0])));
+  return {a,b,low,high,blend};
+}
+
+function poseAt(run, time) {
+  const {a,b,blend} = frameInterval(run.frames,time);
+  const pose = new Array(21);
+  for(let i=0;i<3;i++)pose[i] = a[i+1]+blend*(b[i+1]-a[i+1]);
+  const sign = a[4]*b[4]+a[5]*b[5]+a[6]*b[6]+a[7]*b[7] < 0 ? -1 : 1;
+  for(let i=3;i<7;i++)pose[i] = a[i+1]+blend*(sign*b[i+1]-a[i+1]);
+  const norm=Math.hypot(pose[3],pose[4],pose[5],pose[6]);
+  for(let i=3;i<7;i++)pose[i]/=norm;
+  for(let j=0;j<14;j++){
+    const i=run.order[j]+8;
+    pose[j+7]=a[i]+blend*(b[i]-a[i]);
+  }
+  return pose;
+}
+
+function frameAt(run, time) {
+  const {a,b,low,high,blend}=frameInterval(run.frames,time);
   const mix = (u, v) => u + blend * (v - u);
   const yaw = f => Math.atan2(2 * (f[4] * f[7] + f[5] * f[6]), 1 - 2 * (f[6] ** 2 + f[7] ** 2));
   const yawA = yaw(a), yawDelta = Math.atan2(Math.sin(yaw(b) - yawA), Math.cos(yaw(b) - yawA));
   return {index: low, x: mix(a[1], b[1]), y: mix(a[2], b[2]), yaw: yawA + blend * yawDelta, speed: mix(run.speeds[low], run.speeds[high])};
 }
+
+const sceneCanvas = element('scene');
+const sceneState = element('scene-state');
+const follow = element('follow-driver');
+const noFocus = ':course';
+const ghostId = ':centreline';
+function updateFollow(keep=false){
+  const current=keep ? follow.value : null;
+  const visible=sceneDrivers.filter(e=>!e.hidden);
+  const byTime=[...visible].sort((a,b)=>Number(b.run.finished)-Number(a.run.finished)||a.run.time-b.run.time);
+  follow.replaceChildren(...byTime.map(entry=>new Option(entry.label,entry.id)));
+  if(ui.ghost.checked && race.baseline)follow.add(new Option('Centreline ghost',ghostId));
+  follow.add(new Option('Whole circuit',noFocus));
+  follow.value=Array.from(follow.options).some(o=>o.value===current) ? current : byTime[0]?.id || (ui.ghost.checked ? ghostId : noFocus);
+}
+function setupPerspective(drivers, movie, poster){
+  sceneDrivers=drivers;
+  sceneEligible=drivers.every(e=>e.run.articulated) && (!race.baseline || race.baseline.articulated);
+  updateFollow();
+  ui.video.pause();
+  ui.video.removeAttribute('src');
+  ui.video.removeAttribute('poster');
+  if(movie){
+    ui.video.src=movie;
+    if(poster)ui.video.poster=poster;
+  }
+  ui.video.load();
+  forFilm=Boolean(movie);
+  configureAngle(preferredAngle, false);
+}
+function sceneFallback(){
+  sceneUnavailable=true;
+  if(angle!=='scene')return;
+  configureAngle(forFilm ? 'video':'map', false);
+  ui.message.textContent=forFilm
+    ? 'Showing the 3D race film because interactive 3D is unavailable on this browser.'
+    : 'Interactive 3D is unavailable on this browser. Showing the map.';
+}
+function ensureScene(){
+  if(scenePromise || sceneUnavailable)return;
+  scenePromise=import('./race3d.js').then(module=>module.createRace3D(sceneCanvas,{onContextLost:sceneFallback}))
+    .then(api=>{
+      spectator=api;
+      if(angle==='scene'){sceneState.hidden=true; drawCurrent();}
+    }).catch(sceneFallback);
+}
+function drawScene(){
+  if(!spectator || !race || !sceneEligible || sceneUnavailable)return;
+  if(sceneTrack!==race.track){
+    spectator.setTrack(race.track);
+    sceneTrack=race.track;
+  }
+  const drivers=sceneDrivers.filter(e=>!e.hidden).map(e=>({
+    id:e.id, colour:e.colour, bib:e.bib, pose:poseAt(e.run,elapsed)
+  }));
+  if(ui.ghost.checked && race.baseline){
+    drivers.push({id:ghostId,colour:'#83d3c9',ghost:true,pose:poseAt(race.baseline,elapsed)});
+  }
+  spectator.draw(drivers,{focusId:follow.value,camera:follow.value===noFocus?'grandstand':'chase',time:elapsed});
+}
+function drawCurrent(){
+  if(angle==='map')drawMap();
+  else if(angle==='scene'){
+    try{drawScene();}catch{sceneFallback();}
+  }
+}
+follow.addEventListener('change',drawCurrent);
 
 function setSpan(canvas, width, height) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -229,7 +332,7 @@ function compareConditions(a,b) {
 
 function drawField(ctx) {
   const positions=[];
-  if(ui.ghost.checked){
+  if(ui.ghost.checked && race.baseline){
     const marker=frameAt(race.baseline,elapsed);
     if(ui.line.checked)trail(ctx,race.baseline,marker,true);
     drawDuck(ctx,marker,true);
@@ -283,16 +386,16 @@ function driverName(id,local) {
   return id.replace(/^jackdh-/, '').split('-').map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join(' ');
 }
 
-function resultsList(missing,local){
+function resultsList(missing,training){
   const target=element('field-rows');
   target.replaceChildren();
   const ranked=[...field].sort((a,b)=>Number(b.run.finished)-Number(a.run.finished) ||
     (a.run.finished && b.run.finished ? a.run.time-b.run.time : 0) || a.id.localeCompare(b.id));
   const wins=ranked.filter(e=>e.run.finished && e.run.time===ranked[0].run.time);
   const fastest=wins.length>0?wins[0].run.time:0;
-  element('field-winner').textContent=wins.length===0?'No recorded driver finished this lap.':
-    (wins.length>1?'Joint winners on this start: ':'Winner on this start: ')+wins.map(e=>driverName(e.id,local)).join(', ')+
-    ' · '+lapClock(fastest,2);
+  const winnerLabel=training?'Fastest shown':(wins.length>1?'Joint winners on this start':'Winner on this start');
+  element('field-winner').textContent=wins.length===0?'None of the drivers shown finished.':
+    winnerLabel+' · '+wins.map(e=>e.label).join(', ')+' · '+lapClock(fastest,2);
   let previousTime=null,place=0;
   for(const [index,entry] of ranked.entries()){
     const row=document.createElement('li');
@@ -301,13 +404,13 @@ function resultsList(missing,local){
     if(wins.includes(entry))row.className='fastest-row';
     const select=document.createElement('label');
     const checkbox=document.createElement('input');
-    checkbox.type='checkbox';checkbox.checked=true;
-    checkbox.setAttribute('aria-label','Show '+entry.id+' on the map');
+    checkbox.type='checkbox';checkbox.checked=true;checkbox.disabled=angle==='video';
+    checkbox.setAttribute('aria-label','Show '+entry.label+' in the replay');
     checkbox.addEventListener('change',()=>{
-      entry.hidden=!checkbox.checked;row.classList.toggle('muted-driver',entry.hidden);drawMap();
+      entry.hidden=!checkbox.checked;row.classList.toggle('muted-driver',entry.hidden);updateFollow(true);drawCurrent();
     });
     const bib=document.createElement('span');bib.className='field-bib';bib.textContent=entry.bib;
-    const name=document.createElement('span');name.className='field-driver';name.textContent=driverName(entry.id,local);
+    const name=document.createElement('span');name.className='field-driver';name.textContent=entry.label;
     select.append(checkbox,bib,name);
     const time=document.createElement('span');time.className='field-time';
     if(entry.run.finished){
@@ -325,13 +428,19 @@ function resultsList(missing,local){
   unavailable.textContent=missing.map(item=>item.id+' · '+item.error).join('; ');
 }
 
-function loadField(reference,entrants,missing,local) {
+function loadField(reference,entrants,missing,local,movie=null,hasBaseline=true,training=false) {
   pause();
-  const all=entrants.map((entry,i)=>({...entry,bib:String(i+1),colour:fieldColours[i%fieldColours.length],hidden:false}));
+  element('field-results').querySelector('h2').textContent='Recorded finish order';
+  const all=entrants.map((entry,i)=>({...entry,
+    label:entry.label || driverName(entry.id,local),
+    bib:String(entry.candidate??i+1),
+    colour:fieldColours[((entry.candidate??i+1)-1)%fieldColours.length],
+    hidden:false}));
   const focus=all.find(entry=>entry.run.finished) || all[0];
-  race={track:reference.track,seed:reference.seed,baseline:reference.baseline,challenger:focus.run};
+  race={track:reference.track,seed:reference.seed,baseline:hasBaseline ? reference.baseline : null,challenger:focus.run};
+  element('ghost-control').hidden=!hasBaseline;
   field=all;
-  raceDuration=all.reduce((end,e)=>Math.max(end,e.run.time),reference.baseline.time);
+  raceDuration=all.reduce((end,e)=>Math.max(end,e.run.time),race.baseline?.time || 0);
   elapsed=0;
   element('single-telemetry').hidden=true;
   element('field-results').hidden=false;
@@ -339,13 +448,11 @@ function loadField(reference,entrants,missing,local) {
   document.querySelector('.gradient-legend').hidden=true;
   ui['track-title'].textContent=local?'Local ghost race':'re:Invent 2018';
   ui['track-detail'].textContent=all.length+' drivers · same start, seed '+reference.seed;
-  ui['video-view'].hidden=true;
   ui.track.setAttribute('aria-label','Overhead race with '+all.length+' numbered drivers sharing one track and clock');
-  ui.video.pause();ui.video.removeAttribute('src');ui.video.load();
-  if(angle!=='map')setAngle('map');
+  setupPerspective(all,movie,movie?'./replays/ghost-race.jpg':null);
   ui.workspace.hidden=false;ui.message.textContent='';
   ui.seek.max=raceDuration;ui.duration.textContent=lapClock(raceDuration);
-  resultsList(missing,local);
+  resultsList(missing,training);
   pause();resize();
 }
 
@@ -358,7 +465,7 @@ function drawMap() {
     return;
   }
   const duck=frameAt(race.challenger,elapsed);
-  if(ui.ghost.checked){
+  if(ui.ghost.checked && race.baseline){
     const ghost=frameAt(race.baseline,elapsed);
     trail(ctx,race.baseline,ghost,true);drawDuck(ctx,ghost,true);
   }
@@ -399,12 +506,14 @@ function update(){
   ui.clock.textContent=lapClock(elapsed);
   const done=elapsed>race.challenger.frames.at(-1)[0]+.001;
   ui.speed.textContent=done?'—':frameAt(race.challenger,elapsed).speed.toFixed(2);
-  drawMap();drawPlot();
+  drawCurrent();drawPlot();
 }
 
 function resize(){
   if(!race || ui.workspace.hidden)return;
-  drawTerrain();if(!field)buildPlot();update();
+  if(angle==='map')drawTerrain();
+  if(!field)buildPlot();
+  update();
 }
 
 function pause(){
@@ -451,18 +560,35 @@ function play(){
   update();animationFrame=requestAnimationFrame(tick);
 }
 
-function setAngle(next){
-  if(next===angle)return;
+function configureAngle(requested, remember=true){
+  if(remember)preferredAngle=requested;
+  let next=requested;
+  if(requested==='scene' && (!sceneEligible || sceneUnavailable))next=forFilm?'video':'map';
+  if(requested==='video' && !forFilm)next=sceneEligible && !sceneUnavailable?'scene':'map';
   const wasPlaying=playing;pause();
   angle=next;movieClockReady=false;
-  ui.track.hidden=next!=='map';ui.video.hidden=next!=='video';
-  ui['map-options'].hidden=next!=='map';
-  ui['map-view'].setAttribute('aria-pressed',String(next==='map'));
-  ui['video-view'].setAttribute('aria-pressed',String(next==='video'));
-  if(next==='video'){
-    syncVideo();
-  }else resize();
+  sceneCanvas.hidden=next!=='scene';ui.track.hidden=next!=='map';ui.video.hidden=next!=='video';
+  sceneState.hidden=next!=='scene' || Boolean(spectator);
+  element('scene-view').hidden=!sceneEligible || sceneUnavailable;
+  ui['video-view'].hidden=!forFilm;
+  for(const [id,key] of [['scene-view','scene'],['map-view','map'],['video-view','video']]){
+    element(id).setAttribute('aria-pressed',String(next===key));
+  }
+  ui['map-options'].hidden=next==='video';
+  element('follow-label').hidden=next!=='scene';
+  element('trail-control').hidden=next!=='map';
+  document.querySelector('.gradient-legend').hidden=next!=='map' || Boolean(field);
+  for(const cb of element('field-rows').querySelectorAll('input'))cb.disabled=next==='video';
+  if(next==='scene')ensureScene();
+  if(next==='video')syncVideo();
+  resize();
   if(wasPlaying)play();
+}
+function setAngle(next){
+  configureAngle(next);
+  const url=new URL(location.href);
+  url.searchParams.set('camera',next==='video'?'film':next);
+  history.replaceState(null,'',url);
 }
 
 function resultText(run){
@@ -471,6 +597,7 @@ function resultText(run){
 
 function loadRace(raw,custom=false,archived=false){
   const validated=parseRace(raw);
+  element('ghost-control').hidden=false;
   field=null;
   element('field-results').hidden=true;
   element('single-telemetry').hidden=false;
@@ -497,12 +624,9 @@ function loadRace(raw,custom=false,archived=false){
     : 'DNF means the recorded run ended before a valid full lap.';
   ui.seek.max=raceDuration;ui.duration.textContent=lapClock(raceDuration);
   ui['chart-end'].textContent=race.challenger.finished?'Finish':'Run ended';
-  ui.video.pause();ui.video.removeAttribute('src');ui.video.load();
-  // Only the checked-in film may be loaded. User-supplied replays are data only.
-  const hasVideo=!custom && !archived && raw.video==='replays/trackside.mp4';
-  ui['video-view'].hidden=!hasVideo;
-  if(hasVideo)ui.video.src='./replays/trackside.mp4';
-  if(angle!=='map')setAngle('map');
+  const movie=!custom && !archived && raw.video==='replays/trackside.mp4';
+  setupPerspective([{id:':challenger',run:race.challenger,label:'Trained duck',colour:'#ff986a'}],
+                   movie?'./replays/trackside.mp4':null,movie?'./replays/trackside.jpg':null);
   pause();resize();
 }
 
@@ -515,14 +639,15 @@ ui.seek.addEventListener('input',()=>{
   syncVideo();update();
 });
 ui.rate.addEventListener('change',()=>{previousTick=null;syncVideo();});
-ui.ghost.addEventListener('change',drawMap);
+ui.ghost.addEventListener('change',()=>{updateFollow(true);drawCurrent();});
+element('scene-view').addEventListener('click',()=>setAngle('scene'));
 ui.line.addEventListener('change',drawMap);
 ui['map-view'].addEventListener('click',()=>setAngle('map'));
 ui['video-view'].addEventListener('click',()=>setAngle('video'));
 ui.video.addEventListener('loadedmetadata',()=>{syncVideo(true);});
 ui.video.addEventListener('error',()=>{
   if(ui['video-view'].hidden || !ui.video.getAttribute('src'))return;
-  ui['video-view'].hidden=true;setAngle('map');
+  forFilm=false;configureAngle(sceneEligible && !sceneUnavailable?'scene':'map',false);
   ui.message.textContent='The trackside film could not load. The overhead replay is available.';
 });
 ui.upload.addEventListener('change',async()=>{
@@ -548,6 +673,7 @@ ui.upload.addEventListener('change',async()=>{
       });
       loadField(fieldRuns[0],entrants,[],true);
     }
+    leaveTraining();
     localOption.textContent=files.length>1?'Opened replays':'Opened file';
     localOption.hidden=false;
     picker.value=':local';
@@ -555,6 +681,7 @@ ui.upload.addEventListener('change',async()=>{
     element('run-parent').hidden=true;
     const url=new URL(location.href);
     url.searchParams.delete('run');
+    clearTrainingParams(url);
     url.searchParams.delete('view');
     history.replaceState(null,'',url);
   }catch(error){if(request===sourceRequest)ui.message.textContent='Replay could not open. '+error.message;}
@@ -599,9 +726,73 @@ async function fetchReplay(id) {
   catch(error){replayPaths.delete(id);throw error;}
 }
 
+let trainingArchive=null;
+let trainingIntent=false;
+const trainingBox=element('training-archive');
+function clearTrainingParams(url){
+  for(const key of ['strategy','generation','seed','heat','batch'])url.searchParams.delete(key);
+}
+function leaveTraining(){
+  trainingIntent=false;
+  trainingArchive?.close();
+  trainingBox.hidden=true;
+}
+function showTrainingGroup(group){
+  if(!trainingIntent)return;
+  const reference=parseRace(group.reference);
+  const entries=group.entries.map(e=>({id:String(e.id),label:e.label,candidate:e.candidate,
+    run:readRun(e.run,e.label,group.reference.joints)}));
+  loadField(reference,entries,[],true,null,group.hasBaseline!==false,true);
+  ui['track-title'].textContent=group.title || 'Training attempts';
+  ui['track-detail'].textContent=entries.length+' shown · same start, seed '+reference.seed;
+  element('field-results').querySelector('h2').textContent='Finish order';
+  picker.value=':training';
+}
+async function openTraining(request,replaceAddress){
+  trainingIntent=true;
+  pause();
+  trainingBox.hidden=false;
+  setParent(null);
+  ui.workspace.hidden=false;
+  ui.message.textContent='Loading the recorded training attempts…';
+  if(replaceAddress){
+    const url=new URL(location.href);
+    url.searchParams.delete('run');
+    url.searchParams.set('view','training');
+    history.replaceState(null,'',url);
+  }
+  if(!trainingArchive){
+    const mod=await import('./training3d.js');
+    if(request!==sourceRequest)return;
+    trainingArchive=mod.createTrainingArchive(trainingBox,{
+      onGroup:showTrainingGroup,
+      onError:err=>{
+        if(!trainingIntent)return;
+        ui.message.textContent='Training replay unavailable. '+(err?.message || err)+' Choose another start or switch to Saved drivers.';
+        if(!race && defaultTrainingRequest===sourceRequest){
+          const fallback=runs.size?':all':'';
+          openRun(fallback).then(()=>{
+            if(activeRun===fallback)ui.message.textContent='The training archive is unavailable. Showing the saved race.';
+          });
+        }
+      }
+    });
+  }
+  if(request!==sourceRequest)return;
+  picker.value=':training';
+  activeRun=':training';
+  localOption.hidden=true;
+  await trainingArchive.open();
+}
+
 async function openRun(id, replaceAddress=true){
   const request=++sourceRequest;
   try{
+    if(id===':training'){
+      await openTraining(request,replaceAddress);
+      return;
+    }
+    leaveTraining();
     if(id===':all'){
       const reference=parseRace(await fetchReplay(''));
       const snapshots=await Promise.all([...runs.keys()].map(async key=>{
@@ -616,7 +807,23 @@ async function openRun(id, replaceAddress=true){
       const entrants=snapshots.filter(item=>item.run);
       const missing=snapshots.filter(item=>item.error);
       if(!entrants.length)throw new Error('No saved laps on the featured track and start seed.');
-      loadField(reference,entrants,missing,false);
+      // A fork may add, remove or change its archived drivers. Only attach the
+      // prerecorded film when these are still the exact five filmed runs.
+      let movie=null;
+      if(entrants.length===5 && !missing.length){
+        try{
+          const manifest=await fetch('./replays/ghost-film.json').then(r=>r.json());
+          const match=await Promise.all(entrants.map(async entry=>{
+            const bytes=new TextEncoder().encode(JSON.stringify(entry.run.frames));
+            const hash=await crypto.subtle.digest('SHA-256',bytes);
+            const hex=Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+            return hex===manifest.poses[entry.id];
+          }));
+          if(match.every(Boolean))movie='./replays/ghost-race.mp4';
+        }catch{ /* The film is optional in self-hosted forks. */ }
+      }
+      if(request!==sourceRequest)return;
+      loadField(reference,entrants,missing,false,movie);
       setParent(null);
     }else{
       if(id && !runs.has(id))throw new Error('This run is not in the archive.');
@@ -630,6 +837,7 @@ async function openRun(id, replaceAddress=true){
     activeRun=id;
     if(replaceAddress){
       const url=new URL(location.href);
+      clearTrainingParams(url);
       if(id && id!==':all')url.searchParams.set('run',id);
       else url.searchParams.delete('run');
       if(id==='')url.searchParams.set('view','featured');
@@ -645,6 +853,7 @@ async function openRun(id, replaceAddress=true){
   }
 }
 picker.addEventListener('change',()=>openRun(picker.value));
+let defaultTrainingRequest=null;
 async function startViewer(){
   const pending=sourceRequest;
   try{
@@ -666,11 +875,14 @@ async function startViewer(){
   if (pagesOwner && pagesRepo && /^[a-z0-9._-]+$/i.test(pagesRepo)){
     const repo='https://github.com/'+pagesOwner[1]+'/'+encodeURIComponent(pagesRepo);
     document.querySelector('.train-link').href=repo+'#try-your-own-duck';
+    document.querySelector('.race-credits a').href=repo+'/blob/main/assets/duck-attribution.md';
   }
   if(sourceRequest!==pending)return;
   const params=new URLSearchParams(location.search);
-  const requested=params.get('run') || ((runs.size && params.get('view')!=='featured')?':all':'');
-  if(requested && requested!==':all' && !runs.has(requested)){
+  const view=params.get('view');
+  const requested=params.get('run') || (view==='featured'?'':view==='all'?(runs.size?':all':''):':training');
+  if(!params.has('run') && !params.has('view'))defaultTrainingRequest=sourceRequest+1;
+  if(requested && ![':all',':training'].includes(requested) && !runs.has(requested)){
     await openRun('',false);
     ui.message.textContent='That run is unavailable here. Showing the featured race.';
   }else{

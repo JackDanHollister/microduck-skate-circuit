@@ -1,0 +1,1 @@
+This folder contains the unmodified ES-module build of [Three.js 0.160.1](https://www.npmjs.com/package/three/v/0.160.1) and its [MIT licence](LICENSE). The viewer imports this local file so a replay can run from a clone without contacting a JavaScript CDN.

@@ -26,13 +26,16 @@
       <section class="player" aria-label="Race replay">
         <div class="player-bar">
           <div><h2 id="track-title">re:Invent 2018</h2><p id="track-detail">AWS DeepRacer circuit</p></div>
-          <div class="views" aria-label="Camera angle">
-            <button id="map-view" type="button" aria-pressed="true">Overhead</button>
-            <button id="video-view" type="button" aria-pressed="false" hidden>Trackside</button>
+          <div class="views" role="group" aria-label="Replay view">
+            <button id="scene-view" type="button" aria-pressed="true">3D</button>
+            <button id="map-view" type="button" aria-pressed="false">Map</button>
+            <button id="video-view" type="button" aria-pressed="false" hidden>Film</button>
           </div>
         </div>
         <div class="screen" id="screen">
-          <canvas id="track" role="img" aria-label="Overhead map of the skating duck, its racing line and the centreline ghost"></canvas>
+          <canvas id="scene" role="img" aria-label="3D Microduck race with articulated legs and skates"></canvas>
+          <div id="scene-state" role="status" hidden>Loading the 3D Microduck…</div>
+          <canvas id="track" hidden role="img" aria-label="Overhead map of the skating duck, its racing line and the centreline ghost"></canvas>
           <video id="video" muted playsinline preload="none" hidden aria-label="Trackside view of the recorded simulation"></video>
         </div>
         <div class="controls">
@@ -41,8 +44,9 @@
           <select id="rate" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
         </div>
         <div class="map-options" id="map-options">
-          <label><input type="checkbox" id="ghost" checked> Centreline ghost</label>
-          <label><input type="checkbox" id="line" checked> <span id="trail-label">Speed trail</span></label>
+          <label id="follow-label" for="follow-driver">Follow <select id="follow-driver"></select></label>
+          <label id="ghost-control"><input type="checkbox" id="ghost" checked> Centreline ghost</label>
+          <label id="trail-control"><input type="checkbox" id="line" checked> <span id="trail-label">Speed trail</span></label>
           <div class="gradient-legend"><span>Slow</span><i></i><span>Fast</span></div>
         </div>
       </section>
@@ -50,8 +54,9 @@
       <aside class="telemetry" aria-label="Lap telemetry">
         <div class="run-archive" id="run-archive" hidden>
           <label for="run-picker">Race view</label>
-          <select id="run-picker"><option value=":all">All saved runs</option><option value="">Featured race · trackside film</option></select>
+          <select id="run-picker"><option value=":all">Saved drivers</option><option value=":training">Training attempts</option><option value="">Featured driver · Corner</option></select>
           <p id="run-parent" hidden></p>
+          <div id="training-archive" hidden aria-label="Browse training attempts"></div>
         </div>
         <section id="field-results" hidden aria-label="Recorded finish order">
           <h2>Recorded finish order</h2>
@@ -73,6 +78,7 @@
         </div>
       </aside>
     </div>
+    <footer class="race-credits"><a href="https://github.com/JackDanHollister/microduck-skate-circuit/blob/main/assets/duck-attribution.md">Microduck model credits</a></footer>
   </main>
 </body>
 </html>
