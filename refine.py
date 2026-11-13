@@ -22,12 +22,35 @@ def quality(attempts):
     return len(finishes), -float(seconds)
 
 
-def optimize(track, parent, workers, generations, sectors):
+STRATEGIES = {
+    # Speed, line position, lookahead and turn gain mutation scales.
+    "balanced": (1.0, 1.0, 1.0, 1.0),
+    "pace": (1.75, 0.65, 0.80, 0.78),
+    "corner": (0.72, 1.85, 1.60, 1.68),
+    "stability": (0.80, 0.64, 0.90, 0.75),
+}
+
+
+def optimize(
+    track, parent, workers, generations, sectors, search_seed=21113, strategy="balanced"
+):
+
     if generations < 1 or workers < 1:
         raise ValueError("Workers and generations must be positive")
-    rng = np.random.default_rng(21113)
+    rng = np.random.default_rng(search_seed)
     mean = parent.resample(sectors).vector()
     spread = np.r_[np.full(sectors, 0.060), np.full(sectors, 0.045), 0.045, 0.17]
+    speed_scale, line_scale, look_scale, gain_scale = STRATEGIES[strategy]
+    spread *= np.r_[
+        np.full(sectors, speed_scale),
+        np.full(sectors, line_scale),
+        look_scale,
+        gain_scale,
+    ]
+    # The reliability specialist tests an additional start per trial and avoids
+    # the upward speed bias used when exploring faster lines.
+    training_batch = 4 if strategy == "stability" else 3
+    speed_bias = {"pace": 0.4, "stability": -0.12}.get(strategy, 0.14)
     minimum = spread * 0.42
     bounds = (
         np.r_[np.full(sectors, 0.16), np.full(sectors, -0.23), 0.28, 0.4],
@@ -43,7 +66,7 @@ def optimize(track, parent, workers, generations, sectors):
             n = 30
             noise = rng.normal(size=(n, len(mean)))
             # Correlated perturbations cover faster straights as well as individual corners.
-            noise[:, :sectors] += rng.normal(0.14, 0.64, size=(n, 1))
+            noise[:, :sectors] += rng.normal(speed_bias, 0.64, size=(n, 1))
             noise[:, sectors : 2 * sectors] += rng.normal(0, 0.45, size=(n, 1))
             pop = np.clip(mean + spread * noise, *bounds)
             pop[0] = leader
@@ -51,7 +74,7 @@ def optimize(track, parent, workers, generations, sectors):
             # Stay close to a validated leader as the wider population explores.
             for i in range(2, 9):
                 pop[i] = np.clip(leader + spread * noise[i] * 0.55, *bounds)
-            seeds = rng.choice(np.arange(160, 260), 3, replace=False)
+            seeds = rng.choice(np.arange(160, 260), training_batch, replace=False)
             groups = assess(pool, track, pop, seeds)
             ranks = sorted(range(n), key=lambda i: quality(groups[i]), reverse=True)
             elite = pop[ranks[:6]]
@@ -82,14 +105,14 @@ def optimize(track, parent, workers, generations, sectors):
                 f"weighted clean time {-leader_quality[1]:.3f} s",
                 flush=True,
             )
-        leader, selection = final_selection(pool, track, history)
+        leader, selection = final_selection(pool, track, history, search_seed + 797306)
         history[-1]["final_selection"] = selection
     return Driver.from_vector(leader), history
 
 
-def final_selection(pool, track, history):
+def final_selection(pool, track, history, random_seed=818419):
     """Screen local variations, then freeze one driver on independent selection races."""
-    rng = np.random.default_rng(818419)
+    rng = np.random.default_rng(random_seed)
     leaders = np.unique(np.array([row["checkpoint"] for row in history]), axis=0)
     leader = np.asarray(history[-1]["checkpoint"])
     sectors = (len(leader) - 2) // 2

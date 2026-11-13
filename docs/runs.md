@@ -4,9 +4,19 @@ I keep each driver with the one it came from, the replay you can watch and every
 
 ## Run it on GitHub
 
-On your own fork, open **Actions → Train a racer → Run workflow**. GitHub may first show an **Enable workflows** button on a new fork. Enter a parent ID from the tree and a new ID for your duck. One generation is a quick first try. Pick **Save the run on a new branch** if you want to keep it in your fork’s history.
+Open **Actions → Train a racer → Run workflow** on your own fork. If Actions are disabled on a newly forked repository, enable them on its Actions tab first. Enter a parent from the [run tree](../lineage/index.md) and a new ID such as `yourname-wide-exit`. **Independent searches** defaults to **one**. The generations setting applies to each search.
 
-Open the completed workflow run to download the **race-record** artifact. Unzip it and choose its `race.json` in the viewer. If you selected the branch option, the **save-to-fork** job also links to the new branch. Merge that branch into your fork’s `main` to keep it in your tree, or open a pull request to share it upstream. If your fork restricts writing with Actions, the training job still provides the downloadable artifact.
+Choose **three** to run three separate searches from the same parent using GitHub’s runners. The jobs use different strategies and fixed search seeds. They train concurrently when three runners are available, and take roughly three times the total runner minutes of one search.
+
+| Child ID suffix | Strategy | Track sectors | Search seed |
+| --- | --- | --- | --- |
+| `-a` | Pace | 12 | 20261113 |
+| `-b` | Corner | 12 | 20261114 |
+| `-c` | Stability | 6 | 20261115 |
+
+The single search keeps your ID as entered and uses the balanced strategy with seed 20261113 and the parent’s sector count. After the jobs finish, open the workflow summary. Each successful child has its own `race-record-<child-id>` artifact containing the driver, lap replay and results on the same evaluation starts. Compare finish counts and median clean times before picking one. Download the artifact, unzip it and choose its `race.json` in **Open replay**.
+
+Tick **Save each run on a new branch** to keep the results in your fork. Each child gets its own branch and a link to its tree in the save job summary. You can merge just the one you want, send a pull request upstream, or share all three. If branch saving is disabled by your fork’s Actions permissions, download the artifacts, copy each one’s four files into `lineage/<child-id>/`, run `python run_tree.py index` and `python run_tree.py check`, then commit those run folders and the two index files.
 
 ## Start from a saved driver
 
@@ -47,6 +57,6 @@ Open the branch on your fork. The new driver sits under its parent in `lineage/i
 
 The GitHub tree links to the checkpoint, replay and individual results. You can download any replay JSON and open it in the browser viewer. On a Pages site that includes the run, add `?run=yourname-wide-exit` to the viewer URL to go straight to it. A fork can host its own viewer by opening **Settings → Pages → Deploy from a branch** and selecting the default branch and `/ (root)`. Use the URL GitHub gives your fork.
 
-Each run folder is a snapshot and the ID is permanent. Use a new ID for another attempt. The check command reads the local files, checks their hashes and the saved results, and verifies that every parent exists and every driver belongs to the same tree. To repeat a result independently, run `race.py replay` and `race.py evaluate` on the saved driver. Use its recorded replay seed and evaluation seeds for comparisons.
+Each run folder is a snapshot and the ID is permanent. Use a new ID for another attempt. Each run card records the simulator and course hashes and, when they match the checkout, its Git commit. If you change either, commit the changes before recording the run to include that revision. The check command reads the local files, checks their hashes and the saved results, and verifies that every parent exists and every driver belongs to the same tree. To repeat a result independently, run `race.py replay` and `race.py evaluate` on the saved driver. Use its recorded replay seed and evaluation seeds for comparisons.
 
 If two branches add runs at the same time, keep both run folders on merge. To resolve a conflict in the generated indexes, run `python run_tree.py index`, then `python run_tree.py check` and stage the two index files. An ID collision needs a fresh child ID.

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "jackdh-round-two",
+  "parent": "jackdh-first-lap",
+  "source": {
+    "simulator_sha256": "925ff6ab574a3cda777419cf591f66b2b21ce0f5948113f4bdd4bae45549d3a4",
+    "track_sha256": "ab7aa3879b13b0a578f597703b770dc82f91ec55ae9a4dff45cd5b7acf4033ff",
+    "revision": "bb28da6c1b37a4c0e0629f13c4dea3662c319bb4"
+  },
+  "files": {
+    "driver.json": "0f19da9b1885b74679b439881b3a49d1c831fa9835285820fc43d09cfda13e26",
+    "race.json": "0df910dd91d98f793768c414feddd0ac7ccc8469f241ef275658062489bd56e4",
+    "evaluation.json": "e6bfcbe97b4c6b3cfeea7b4df8ebf98700b2b9a4b1fa36d17e534a32c3f423be"
+  }
+}

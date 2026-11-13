@@ -6,11 +6,17 @@ I wanted to see if my Microduck could find a faster way around a racing circuit 
 
 [![A white Microduck skating into a bend with the blue centreline ghost on its inside](replays/trackside.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/)
 
-## The first race
+## Which duck wins?
 
-On the featured start, the duck skated a clean **27.54 s** lap. The ghost took **29.83 s**. That’s 2.29 seconds off a 17.71 m lap.
+I ran the centreline ghost, my first racer and its new driver on the same 64 fresh simulated starts. The new driver finished every lap. I kept the first driver in the run tree so anyone can race it or try a different branch. [Compare the runs](lineage/index.md)
 
-I tried 16 more starts that the trainer hadn’t used. The challenger beat the ghost on all 15 laps where both finished. On the other start the challenger fell. The ghost finished all 16. Median times for completed laps were 27.95 s for the challenger and 29.55 s for the ghost. These are simulated results on this circuit. [All 16 results](replays/evaluation.json)
+| Driver | Clean finishes | Median clean lap |
+| --- | ---: | ---: |
+| Centreline ghost | 64 / 64 | 29.60 s |
+| First racer | 57 / 64 | 27.96 s |
+| Round two | 64 / 64 | 27.63 s |
+
+Round two beat its parent on 41 of the 57 starts where both finished. On the **featured start**, round two took **27.84 s**, the original driver took **27.54 s** and the centreline ghost took **29.83 s**. I chose round two for its clean finishes and typical pace. [All 64 results](replays/championship-evaluation.json) · [Watch the original run](https://jackdanhollister.github.io/microduck-skate-circuit/?run=jackdh-first-lap)
 
 ## Race from a fork
 
@@ -63,11 +69,30 @@ python race.py evaluate --policy runs/my-driver.json --workers 4 --report runs/m
 
 `my-driver.json` contains the settings you trained, `my-race.json` opens in the viewer, and `my-results.json` records the evaluation. Use `--workers 1` on a small machine or if you want to leave cores free. To keep the parent and child together on GitHub, follow [Share a run from your fork](docs/runs.md).
 
+### 5. Run several searches together
+
+I split one CPU budget across three trainers. They all start from the same driver. They use different search seeds to explore **pace**, **cornering** and **stability**. On a machine with six spare cores:
+
+```bash
+python league.py train --start-from driver.json --workers 6 --generations 8 --output runs/league
+```
+
+Six workers means two per trainer. Use a fresh output folder for each batch. Each trainer saves its driver, replay and log under `runs/league/pace/`, `corner/` or `stability/`. The league compares all three with their parent on the same 48 selection starts. It saves the winner in `runs/league/winner.json` and the comparison in `runs/league/selection.json`. The parent can win. Open the three `race.json` files in the viewer to compare the laps.
+
+To check whether that winner improves on the parent, use a fresh range of starts shared by both drivers and the centreline ghost:
+
+```bash
+python compare_drivers.py --parent runs/league/parent.json --challenger runs/league/winner.json \
+  --first-seed 11200 --starts 64 --workers 6 --output runs/league/final-test.json
+```
+
+To run this on GitHub's machines, go to **Actions → Train a racer** in your fork and set **Independent searches** to **three**. Each search produces its own child run. [Run it on GitHub](docs/runs.md#run-it-on-github)
+
 ## How the lap works
 
-I split the track into six sectors. A driver chooses a forward speed and an offset from the centreline at each one. It blends those values between sectors, looks ahead to a point on the chosen line, and asks the roller policy for a forward speed and turn rate. The driver reads the duck's position and heading from the simulator.
+My first driver split the track into six sectors, and round two used 12. A driver chooses a forward speed and an offset from the centreline at each one. It blends the settings between sectors, looks ahead to a point on the chosen line and asks Pollen's roller policy for a forward speed and turn rate. The driver reads the duck's position and heading from the simulator.
 
-I used cross-entropy search over complete episodes to train those 12 sector settings, the lookahead distance and the turn response. Six generations tried 16 drivers each. A clean finish earns a time-based reward. A failed lap earns partial credit for progress. Eight gates must be crossed in order, and the simulation checks wheel-centre boundaries and falls. The white duck and blue ghost are separate runs from the same start, played against the same clock. [Simulation and training code](race.py)
+I used cross-entropy search over complete episodes to train those settings, the lookahead distance and the turn response. Round two started from the first driver's settings and trained for 26 generations. A clean finish earns a time-based reward. A failed lap earns partial credit for progress. Eight gates must be crossed in order, and the simulation checks wheel-centre boundaries and falls. The white duck and blue ghost are separate runs from the same start, played against the same clock. [Simulation and training code](race.py)
 
 ## Make a trackside film
 

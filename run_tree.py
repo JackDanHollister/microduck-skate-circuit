@@ -5,6 +5,7 @@ import itertools
 import json
 import math
 import re
+import subprocess
 import tempfile
 from collections import defaultdict
 from hashlib import sha256
@@ -127,6 +128,20 @@ def assess(folder):
     require(
         seeds["baseline"] == seeds["challenger"], "Evaluation starts must be paired."
     )
+    by_seed = [
+        {a["seed"]: a for a in evaluation[key]["attempts"]}
+        for key in ("baseline", "challenger")
+    ]
+    paired = [
+        (a["time"], by_seed[1][seed]["time"])
+        for seed, a in by_seed[0].items()
+        if a["reason"] == by_seed[1][seed]["reason"] == "finished"
+    ]
+    require(
+        evaluation["paired_clean_laps"] == len(paired)
+        and evaluation["challenger_wins"] == sum(c < b for b, c in paired),
+        "Paired finishes or wins do not match the per-start results.",
+    )
     return race["challenger"], evaluation["challenger"], race["seed"]
 
 
@@ -147,6 +162,21 @@ def records(archive):
         require(
             card["version"] == 1 and card["id"] == ident,
             f"Invalid run card at {folder}",
+        )
+        source = card["source"]
+        require(
+            all(
+                isinstance(source[k], str) and re.fullmatch(r"[0-9a-f]{64}", source[k])
+                for k in ("simulator_sha256", "track_sha256")
+            )
+            and (
+                source["revision"] is None
+                or (
+                    isinstance(source["revision"], str)
+                    and re.fullmatch(r"[0-9a-f]{40,64}", source["revision"])
+                )
+            ),
+            f"Invalid source revision or file hashes for {ident}.",
         )
         parent = card["parent"]
         if ident == FIRST:
@@ -225,6 +255,36 @@ def write_index(archive):
         replace_text(archive / name, content)
 
 
+def provenance():
+    """Identify unchanged committed code, including when run from a downloaded ZIP."""
+    simulator_hash = sha256((ROOT / "race.py").read_bytes()).hexdigest()
+    track_hash = sha256(TRACK.read_bytes()).hexdigest()
+    source = {
+        "simulator_sha256": simulator_hash,
+        "track_sha256": track_hash,
+        "revision": None,
+    }
+    try:
+        revision = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, stderr=subprocess.DEVNULL, text=True
+        ).strip()
+        for name, expected in (
+            ("race.py", simulator_hash),
+            ("data/reinvent2018.json", track_hash),
+        ):
+            data = subprocess.check_output(
+                ["git", "show", f"{revision}:{name}"],
+                cwd=ROOT,
+                stderr=subprocess.DEVNULL,
+            )
+            if sha256(data).hexdigest() != expected:
+                return source
+        source["revision"] = revision
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return source
+
+
 def add(archive, ident, parent, paths):
     run_id(ident)
     run_id(parent)
@@ -242,7 +302,13 @@ def add(archive, ident, parent, paths):
             )
             (stage / name).write_bytes(source.read_bytes())
         assess(stage)
-        card = {"version": 1, "id": ident, "parent": parent, "files": filesums(stage)}
+        card = {
+            "version": 1,
+            "id": ident,
+            "parent": parent,
+            "source": provenance(),
+            "files": filesums(stage),
+        }
         (stage / "run.json").write_text(
             json.dumps(card, indent=2) + "\n", encoding="utf-8"
         )

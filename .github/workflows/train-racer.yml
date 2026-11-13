@@ -1,4 +1,5 @@
 name: Train a racer
+run-name: Train ${{ inputs.run_id }} from ${{ inputs.parent }} (${{ inputs.searches }})
 
 on:
   workflow_dispatch:
@@ -9,16 +10,21 @@ on:
         default: jackdh-first-lap
         type: string
       run_id:
-        description: New run ID, such as yourname-wide-exit
+        description: New run ID (three searches add -a, -b and -c)
         required: true
         type: string
+      searches:
+        description: Independent searches
+        type: choice
+        options: ['one', 'three']
+        default: 'one'
       generations:
-        description: Training generations
+        description: Training generations per search
         type: choice
         options: ['1', '6', '12', '26']
         default: '6'
       save_branch:
-        description: Save the run on a new branch in this repository
+        description: Save each run on a new branch in this repository
         type: boolean
         default: false
 
@@ -26,29 +32,60 @@ permissions:
   contents: read
 
 jobs:
-  train:
+  plan:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    outputs:
+      searches: ${{ steps.plan.outputs.searches }}
+    env:
+      PARENT_ID: ${{ inputs.parent }}
+      RUN_ID: ${{ inputs.run_id }}
+      SEARCHES: ${{ inputs.searches }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Choose search seeds and check run IDs
+        id: plan
+        run: |
+          python3 - <<'PY'
+          import json, os, run_tree
+          parent = run_tree.run_id(os.environ["PARENT_ID"])
+          prefix = run_tree.run_id(os.environ["RUN_ID"])
+          known = run_tree.records(run_tree.ARCHIVE)
+          searches = {
+              "one": [("", "balanced", 20261113, "")],
+              "three": [("-a", "pace", 20261113, "12"), ("-b", "corner", 20261114, "12"), ("-c", "stability", 20261115, "6")],
+          }[os.environ["SEARCHES"]]
+          jobs = [{"id": run_tree.run_id(prefix + suffix), "strategy": strategy, "seed": seed, "sectors": sectors}
+                  for suffix, strategy, seed, sectors in searches]
+          if parent not in known or any(job["id"] in known for job in jobs):
+              raise SystemExit("Pick an existing parent and new child run IDs.")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              print("searches=" + json.dumps(jobs, separators=(",", ":")), file=out)
+          PY
+
+  train:
+    name: Train ${{ matrix.id }} (${{ matrix.strategy }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.searches) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     env:
       OMP_NUM_THREADS: 1
       OPENBLAS_NUM_THREADS: 1
       PARENT_ID: ${{ inputs.parent }}
-      RUN_ID: ${{ inputs.run_id }}
+      RUN_ID: ${{ matrix.id }}
+      SEARCH_SEED: ${{ matrix.seed }}
+      STRATEGY: ${{ matrix.strategy }}
+      SECTORS: ${{ matrix.sectors }}
       GENERATIONS: ${{ inputs.generations }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Check parent and new run ID
-        run: |
-          python - <<'PY'
-          import os, run_tree
-          parent = run_tree.run_id(os.environ["PARENT_ID"])
-          child = run_tree.run_id(os.environ["RUN_ID"])
-          known = run_tree.records(run_tree.ARCHIVE)
-          if parent not in known or child in known:
-              raise SystemExit("Pick an existing parent and a new run ID.")
-          PY
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
@@ -56,36 +93,45 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Train and evaluate from the parent
         run: |
-          python race.py train --start-from "lineage/$PARENT_ID/driver.json" --generations "$GENERATIONS" --workers 2 --policy runs/driver.json --output runs/race.json
+          sectors=()
+          if [[ -n "$SECTORS" ]]; then sectors=(--sectors "$SECTORS"); fi
+          python race.py train --start-from "lineage/$PARENT_ID/driver.json" "${sectors[@]}" \
+            --generations "$GENERATIONS" --workers 2 --search-seed "$SEARCH_SEED" --strategy "$STRATEGY" \
+            --policy runs/driver.json --output runs/race.json
           python race.py evaluate --policy runs/driver.json --workers 2 --report runs/evaluation.json
           python run_tree.py add "$RUN_ID" --parent "$PARENT_ID" --driver runs/driver.json --replay runs/race.json --evaluation runs/evaluation.json
           python run_tree.py check
       - name: Save the driver, replay and results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: race-record
-          path: lineage/${{ inputs.run_id }}/
+          name: race-record-${{ matrix.id }}
+          path: lineage/${{ matrix.id }}/
           if-no-files-found: error
 
   save-to-fork:
-    if: ${{ inputs.save_branch }}
-    needs: train
+    name: Save ${{ matrix.id }} to a branch
+    if: ${{ !cancelled() && inputs.save_branch && needs.plan.result == 'success' }}
+    needs: [plan, train]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.searches) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: write
       actions: read
     env:
-      RUN_ID: ${{ inputs.run_id }}
+      RUN_ID: ${{ matrix.id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Download this run
+      - name: Download this child's snapshot
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name race-record --dir "lineage/$RUN_ID"
-      - name: Create a branch with the child run
+        run: gh run download "$GITHUB_RUN_ID" --name "race-record-$RUN_ID" --dir "lineage/$RUN_ID"
+      - name: Create a branch with this child
         run: |
-          branch="runs/$RUN_ID-$GITHUB_RUN_ID"
+          branch="runs/$RUN_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           git switch -c "$branch"
           python run_tree.py index
           python run_tree.py check

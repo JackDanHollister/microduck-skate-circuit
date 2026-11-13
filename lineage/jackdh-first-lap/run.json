@@ -6,5 +6,10 @@
     "driver.json": "e89837fce5dd82f5f14fc26172a099f1d27d919eaa825ad832fa68e9a6b317df",
     "race.json": "96610d694fbe42607ff4f06e428dacd75a938811617159db24b014ca46ecec0a",
     "evaluation.json": "8235725f6ce7f25b438ca51a50fd5c6f7ee047e2c896ba68b9cfcda9ce0e7189"
+  },
+  "source": {
+    "revision": "adf7d9f338fb5b39fdaa1199f9e8dad3b5250bc3",
+    "simulator_sha256": "a3099a71b2f13421079ad9778f05c0f2312a15bded1052643fdfabf067e1b2fe",
+    "track_sha256": "ab7aa3879b13b0a578f597703b770dc82f91ec55ae9a4dff45cd5b7acf4033ff"
   }
 }

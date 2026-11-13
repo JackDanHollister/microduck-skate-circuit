@@ -462,6 +462,13 @@ async function startViewer(){
     }
   }catch{ /* The featured replay works in copies without a run archive. */ }
   element('run-archive').hidden=runs.size===0;
+  // Keep setup and the run tree attached to the current public GitHub Pages fork.
+  const pagesOwner=location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
+  const pagesRepo=location.pathname.split('/').filter(Boolean)[0];
+  if (pagesOwner && pagesRepo && /^[a-z0-9._-]+$/i.test(pagesRepo)){
+    const repo='https://github.com/'+pagesOwner[1]+'/'+encodeURIComponent(pagesRepo);
+    document.querySelector('.train-link').href=repo+'#try-your-own-duck';
+  }
   if(sourceRequest!==pending)return;
   const requested=new URLSearchParams(location.search).get('run') || '';
   if(requested && !runs.has(requested)){

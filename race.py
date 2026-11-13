@@ -364,6 +364,16 @@ def main():
         choices=[6, 12],
         help="Number of speed and line control points",
     )
+    parser.add_argument(
+        "--search-seed",
+        type=int,
+        help="Random seed for driver search, independently of the replay start",
+    )
+    parser.add_argument(
+        "--strategy",
+        choices=["balanced", "pace", "corner", "stability"],
+        default="balanced",
+    )
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--workers", type=int, default=min(os.cpu_count() or 1, 8))
     parser.add_argument("--generations", type=int, default=6)
@@ -371,9 +381,14 @@ def main():
     if args.workers < 1:
         parser.error("--workers must be a positive integer")
     if args.mode != "train" and (
-        args.start_from is not None or args.sectors is not None
+        args.start_from is not None
+        or args.sectors is not None
+        or args.search_seed is not None
+        or args.strategy != "balanced"
     ):
-        parser.error("--start-from and --sectors are training options")
+        parser.error("Driver search options require train mode")
+    if args.search_seed is not None and args.search_seed < 0:
+        parser.error("--search-seed must be non-negative")
     filename = str(args.track.resolve())
     base = Driver.constant()
     if args.mode == "baseline":
@@ -386,7 +401,15 @@ def main():
         )
         return
     if args.mode == "train":
-        if args.start_from or args.sectors:
+        refinement = bool(
+            args.start_from or args.sectors or args.strategy != "balanced"
+        )
+        seed = (
+            args.search_seed
+            if args.search_seed is not None
+            else (21113 if refinement else 20261113)
+        )
+        if refinement:
             initial = (
                 Driver(**json.loads(args.start_from.read_text())["driver"])
                 if args.start_from
@@ -400,10 +423,20 @@ def main():
                 args.workers,
                 args.generations,
                 args.sectors or len(initial.speed),
+                seed,
+                args.strategy,
             )
         else:
-            best, history = train(filename, base, args.workers, args.generations)
-        save_json(args.policy, {"driver": asdict(best), "history": history})
+            best, history = train(filename, base, args.workers, args.generations, seed)
+        save_json(
+            args.policy,
+            {
+                "driver": asdict(best),
+                "history": history,
+                "search_seed": seed,
+                "strategy": args.strategy,
+            },
+        )
     else:
         best = Driver(**json.loads(args.policy.read_text())["driver"])
     if args.mode == "evaluate":
@@ -463,10 +496,10 @@ def main():
         print(key, race[key]["time"], race[key]["reason"], flush=True)
 
 
-def train(filename, base, workers, generations):
+def train(filename, base, workers, generations, search_seed=20261113):
     if workers < 1 or generations < 1:
         raise ValueError("Workers and generations must be positive")
-    rng = np.random.default_rng(20261113)
+    rng = np.random.default_rng(search_seed)
     mu = Driver.constant(0.40, 0.55, 1.35).vector()
     sd = np.r_[np.full(SECTORS, 0.10), np.full(SECTORS, 0.075), 0.065, 0.27]
     floor = np.r_[np.full(SECTORS, 0.03), np.full(SECTORS, 0.02), 0.02, 0.07]
