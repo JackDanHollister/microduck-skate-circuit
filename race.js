@@ -662,7 +662,7 @@ ui.upload.addEventListener('change',async()=>{
     if(files.reduce((sum,f)=>sum+f.size,0)>50e6)throw new Error('Choose replay files totalling under 50 MB.');
     const raws=await Promise.all(files.map(async f=>JSON.parse(await f.text())));
     if(request!==sourceRequest)return;
-    if(files.length===1 && Array.isArray(raws[0]?.field))loadSprintField(raws[0]);
+    if(files.length===1 && Array.isArray(raws[0]?.field))loadCheckpointField(raws[0]);
     else if(files.length===1)loadRace(raws[0],true);
     else {
       const fieldRuns=raws.map(parseRace);
@@ -798,12 +798,13 @@ async function openRun(id, replaceAddress=true){
       return;
     }
     leaveTraining();
-    if(id===':sprint'){
-      const response=await fetch('./replays/sprint-transfer/race.json');
-      if(!response.ok)throw new Error('The sprint checkpoint race could not be loaded.');
+    if(id===':sprint' || id===':handover'){
+      const folder=id===':sprint'?'sprint-transfer':'handover';
+      const response=await fetch('./replays/'+folder+'/race.json');
+      if(!response.ok)throw new Error('The checkpoint replay could not be loaded.');
       const data=await response.json();
       if(request!==sourceRequest)return;
-      loadSprintField(data);
+      loadCheckpointField(data);
       setParent(null);
     }else if(id===':all'){
       const reference=parseRace(await fetchReplay(''));
@@ -854,7 +855,7 @@ async function openRun(id, replaceAddress=true){
       else url.searchParams.delete('run');
       if(id==='')url.searchParams.set('view','featured');
       else if(id===':all')url.searchParams.set('view','all');
-      else if(id===':sprint')url.searchParams.set('view','sprint');
+      else if(id===':sprint' || id===':handover')url.searchParams.set('view',id.slice(1));
       else url.searchParams.delete('view');
       history.replaceState(null,'',url);
     }
@@ -866,15 +867,15 @@ async function openRun(id, replaceAddress=true){
   }
 }
 picker.addEventListener('change',()=>openRun(picker.value));
-function loadSprintField(data){
+function loadCheckpointField(data){
   const track=readTrack(data);
   if(!Array.isArray(data.field) || !data.field.length ||
      data.field.some(e=>!e || typeof e.id!=='string' || !e.id || typeof e.label!=='string') ||
      new Set(data.field.map(e=>e.id)).size!==data.field.length)throw new Error('Invalid checkpoint field.');
   const entries=data.field.map(e=>({id:e.id,label:e.label,run:readRun(e.run,e.label,data.joints)}));
   loadField({track,seed:data.seed},entries,[],true,null,false);
-  ui['track-title'].textContent='Sprint checkpoints on the circuit';
-  ui['track-detail'].textContent='Duck 28 steering · same start, seed '+data.seed;
+  ui['track-title'].textContent=data.title || 'Sprint checkpoints on the circuit';
+  ui['track-detail'].textContent=(data.detail || 'Duck 28 steering')+' · seed '+data.seed;
 }
 let defaultTrainingRequest=null;
 async function startViewer(){
@@ -903,10 +904,10 @@ async function startViewer(){
   if(sourceRequest!==pending)return;
   const params=new URLSearchParams(location.search);
   const view=params.get('view');
-  const views={featured:'', all:runs.size?':all':'', sprint:':sprint'};
+  const views={featured:'', all:runs.size?':all':'', sprint:':sprint', handover:':handover'};
   const requested=params.get('run') || (Object.hasOwn(views,view)?views[view]:':training');
   if(!params.has('run') && !params.has('view'))defaultTrainingRequest=sourceRequest+1;
-  if(requested && ![':all',':training',':sprint'].includes(requested) && !runs.has(requested)){
+  if(requested && ![':all',':training',':sprint',':handover'].includes(requested) && !runs.has(requested)){
     await openRun('',false);
     ui.message.textContent='That run is unavailable here. Showing the featured race.';
   }else{

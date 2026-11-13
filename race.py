@@ -220,10 +220,11 @@ def setup(filename):
     return event, model, start, wheels
 
 
-def simulate(filename, driver, seed, record=False, *, controller=None):
+def simulate(filename, driver, seed, record=False, *, controller=None, settle_speed=0.0):
     track = course(filename)
     event, model, start, wheels = setup(filename)
     command = np.zeros(13)
+    command[0] = settle_speed
     skater = roller() if controller is None else controller
     sim, _, _ = runner._start(
         event, model, [skater], [start.yaw_deg], int(seed), [command]

@@ -8,6 +8,17 @@ Duck 28 set the quickest lap I saw during training, 25.04 s. It came in generati
 
 I also tried Duck 28's steering with my Roller Sprint checkpoint 500 and HlibPlakhtii's Quicksilver v2, the 2 m Arena leader on 13 November 2026. Both matched all five of their official sprint times locally. On Duck 28's original circuit start my duck fell at 1.76 s and Quicksilver fell at 0.34 s. Pollen's roller finished in 25.04 s. Across 64 fresh starts Pollen finished 25 laps. Neither sprint checkpoint reached the first gate. The circuit asks all three to settle at zero speed and then steers them in response to their movement. I kept the published weights and the driving settings fixed. [Watch the three starts](https://jackdanhollister.github.io/microduck-skate-circuit/?view=sprint) · [Half-speed clip](replays/sprint-transfer/launch.mp4) · [Results by start](replays/sprint-transfer/results.json) · [Quicksilver on the Arena](https://huggingface.co/spaces/pollen-robotics/microduck-arena#/r/01M6487YAJEV5NF6J5ZJ5W)
 
+I then gave checkpoint 500 its sprint start and let Pollen's roller take over the legs before the first bend. I tried 96 setups, shortlisted ten, then froze one sprint-only setup and one handover setup before testing 64 more starts. The selected handover begins 1.41 m down the course and blends the joint commands over 0.88 s. It uses the Corner driver for the bends. [Watch the 3D comparison](https://jackdanhollister.github.io/microduck-skate-circuit/?view=handover) · [Watch the full 25.47 s lap](https://jackdanhollister.github.io/microduck-skate-circuit/replays/handover/lap.mp4)
+
+| Same 64 simulated starts | Full laps | Median time on finishes |
+|---|---:|---:|
+| Checkpoint 500 throughout, with gentler steering | 0/64 | — |
+| Checkpoint 500 start, Pollen roller through the bends | 59/64 | 25.34 s |
+| Pollen roller with the usual standing start and Corner driver | 63/64 | 26.67 s |
+| Pollen roller with the handover setup's rolling start and steering | 0/64 | — |
+
+On the 58 starts where both the handover and the standard Corner setup finished, the handover was quicker each time, by a median of 1.27 s. All five failed handover attempts went off track. The lap clock starts after the half-second settle. Checkpoint 500 receives a forward command during that settle, so these times compare two different launches. The only tuned settings here are in the driving code. [Results for each start](replays/handover/results.json) · [Checkpoint 500 on Hugging Face](https://huggingface.co/JackDH/microduck-roller-sprint-20261110-best) · [Pollen's roller weights](https://huggingface.co/pollen-robotics/microduck-policies/tree/1b56c396825c052a4e26e95cf2b8d8298af9e9b4)
+
 I also kept a five-duck race with the two earlier drivers and the three that came out of the parallel searches. You can watch their legs move in **3D**, switch to **Map** to compare their lines, or choose **Film** for the moving trackside camera. [Race the five saved drivers](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all) · [Play the trackside film](https://jackdanhollister.github.io/microduck-skate-circuit/replays/ghost-race.mp4)
 
 [![Stability leading the pack through a bend on the re:Invent circuit](replays/ghost-race.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/?view=all)
@@ -72,6 +83,8 @@ python race.py replay --seed 1 --output runs/my-lap.json
 The terminal prints a time and finish status for both the **baseline** (the ghost) and the **challenger** (the saved driver). Choose **Open replays** in [the viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) and select `runs/my-lap.json` to watch the recorded duck in 3D or follow its line on the map. The file opens locally in your browser. If a driver falls, the replay shows where the attempt ended.
 
 To repeat the sprint checkpoint comparison, run `python sprint_transfer.py --workers 4`. It downloads the two pinned competition exports, checks their five straight-line times, then runs all three skating controllers with the same Duck 28 driver. Open `runs/sprint-transfer/race.json` in the viewer to watch them together.
+
+To repeat the handover experiment, run `python tune_handover.py --workers 4`. It writes the search settings, per-start results and five-driver replay under `runs/handover/`. Open its `race.json` in the viewer.
 
 You can also serve the viewer from your clone. Run `python -m http.server 8000 --bind 127.0.0.1` in the repo root, open [localhost:8000](http://localhost:8000), then use **Open replays**. Press Ctrl+C in the terminal to stop the server.
 
