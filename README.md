@@ -2,6 +2,20 @@
 
 I wanted to see if a Microduck could find a faster way around  the original AWS DeepRacer re:Invent 2018 course.
 
+## New time: 23.37 s
+
+I've got the duck down to **23.37083 seconds** around the re:Invent 2018 circuit. This is my quickest clean simulated lap so far, from a standing start, with all eight gates crossed.
+
+I ran 32 searches across eight different drivers, with 230,400 main training attempts. Pollen's roller policy still handles the legs. I trained the speed, racing line and steering across 24 track sectors.
+
+[![The duck on its 23.37-second lap](replays/new-time-20261115/lap.jpg)](https://jackdanhollister.github.io/microduck-skate-circuit/replays/new-time-20261115/lap.mp4)
+
+**[Watch the lap](https://jackdanhollister.github.io/microduck-skate-circuit/replays/new-time-20261115/lap.mp4)** · [Saved driver](replays/new-time-20261115/driver.json) · [3D replay](replays/new-time-20261115/race.json) · [Repeat this lap](docs/runs.md#repeat-the-record-lap)
+
+I replayed the saved driver on start seed **32905** and matched the time and all eight gate times exactly. The video shows just that duck, with the lap clock stopping at the finish. The driver settings are included, and the simulator downloads the pinned Pollen skating weights automatically. Open the replay JSON in **Open replays** in the [viewer](https://jackdanhollister.github.io/microduck-skate-circuit/) to watch it in 3D. [Timing and checksums](replays/new-time-20261115/verification.json)
+
+## Earlier runs
+
 I ran the races in MuJoCo on my i9-14900K workstation. Pollen’s roller policy handles the legs. I trained the driver to choose a racing line, carry speed through the bends and steer back on course. I ran three searches at once with six CPU workers each, for 3,000 simulated attempts in the main batch.
 
 The ghost and the challenger both use Pollen’s roller policy to move their legs. The challenger learns where to skate and how fast to take each part of the lap.
@@ -12,7 +26,7 @@ Pick a parent, give your runner its own ID and train it for this circuit. Each r
 
 **[Watch the training laps in 3D](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training)**. Pick a search, generation and start seed, then press **Play**. I like watching ten candidates through the same bend to see whose skates step out. The **Drivers** menu lets you show all 30 from that start. Copy the URL to share the group you are watching.
 
-Duck 28 set the quickest lap I saw during training, 25.04 s. It came in generation nine of the cornering search. Four of the other nine ducks in its group of ten went off track on that start. [Follow Duck 28 through the bend](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training&strategy=corner&generation=9&seed=182&heat=3) · [Ten-second clip](https://jackdanhollister.github.io/microduck-skate-circuit/replays/duck-28-corner.mp4)
+Duck 28 set the quickest lap in that first training batch, 25.04 s. It came in generation nine of the cornering search. Four of the other nine ducks in its group of ten went off track on that start. [Follow Duck 28 through the bend](https://jackdanhollister.github.io/microduck-skate-circuit/?view=training&strategy=corner&generation=9&seed=182&heat=3) · [Ten-second clip](https://jackdanhollister.github.io/microduck-skate-circuit/replays/duck-28-corner.mp4)
 
 I also tried Duck 28's steering with my Roller Sprint checkpoint 500 and HlibPlakhtii's Quicksilver v2, the 2 m Arena leader on 13 November 2026. Both matched all five of their official sprint times locally. On Duck 28's original circuit start my duck fell at 1.76 s and Quicksilver fell at 0.34 s. Pollen's roller finished in 25.04 s. Across 64 fresh starts Pollen finished 25 laps. Neither sprint checkpoint reached the first gate. The circuit asks all three to settle at zero speed and then steers them in response to their movement. I kept the published weights and the driving settings fixed. [Watch the three starts](https://jackdanhollister.github.io/microduck-skate-circuit/?view=sprint) · [Half-speed clip](replays/sprint-transfer/launch.mp4) · [Results by start](replays/sprint-transfer/results.json) · [Quicksilver on the Arena](https://huggingface.co/spaces/pollen-robotics/microduck-arena#/r/01M6487YAJEV5NF6J5ZJ5W)
 

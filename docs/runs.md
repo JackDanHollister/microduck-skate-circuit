@@ -2,6 +2,25 @@
 
 I keep each driver with the one it came from, the replay you can watch and every start I used to evaluate it. Pick any driver in the [run tree](../lineage/index.md) and you can start your own branch of the experiment. A GitHub fork gives you your own copy of the whole tree.
 
+## Repeat the record lap
+
+My best single clean lap is **23.37083 s**, using start seed **32905**. The [saved driver](../replays/new-time-20261115/driver.json) includes the 24-sector speed and line settings, lookahead and turn gain. Pollen's pinned roller policy handles the skating and downloads automatically when you first run the simulator.
+
+After the [usual installation](../README.md#2-set-up-python), run this from the repository root:
+
+```bash
+python race.py replay --policy replays/new-time-20261115/driver.json \
+  --seed 32905 --output runs/repeat-23-37.json
+```
+
+The challenger should finish in **23.37083 s**. The [verification file](../replays/new-time-20261115/verification.json) has all eight gate times and the driver, replay and track checksums. The original [solo 3D replay](../replays/new-time-20261115/race.json) opens through **Open replays** in the [viewer](https://jackdanhollister.github.io/microduck-skate-circuit/). The [film](https://jackdanhollister.github.io/microduck-skate-circuit/replays/new-time-20261115/lap.mp4) shows that same recorded lap.
+
+To make your own film with just the trained duck, install the [rendering extras](../README.md#make-a-trackside-film), then run:
+
+```bash
+MUJOCO_GL=egl python render_race.py runs/repeat-23-37.json runs/repeat-23-37.mp4 --solo
+```
+
 ## Enter the shared scoreboard
 
 1. **Fork and train.** Pick a parent from the [scoreboard](../lineage/scoreboard.md). In your fork, open **Actions → Train a racer → Run workflow**. Give your runner a unique ID (for example `yourname-late-braker`) and tick **Save each run on a new branch**. The workflow trains, scores and records it.

@@ -14,7 +14,7 @@ from xml.etree import ElementTree as ET
 import imageio.v2 as imageio
 import mujoco
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from arena import course
 from arena.constants import JOINT_NAMES
@@ -159,15 +159,27 @@ def field_laps(index_path):
             [*order, len(laps)], [*colours, 'ghost'])
 
 
-def render(source, output, fps=24, field=False, poster=None):
+def render(source, output, fps=24, field=False, poster=None, solo=False):
+    if field and solo:
+        raise ValueError('Choose either a solo lap or the archived field.')
     if field:
         track, entries, order, colours = field_laps(source)
     else:
         race = json.loads(source.read_text())
         track = race['track']
-        entries = [np.array(race[name]['frames']) for name in ('challenger', 'baseline')]
-        order = [0, 1]
-        colours = None
+        if solo:
+            if 'field' in race:
+                if len(race['field']) != 1:
+                    raise ValueError('A solo field replay must contain exactly one driver.')
+                lap = race['field'][0]['run']
+            else:
+                lap = race['challenger']
+            entries = [np.array(lap['frames'])]
+            order, colours = [0], [None]
+        else:
+            entries = [np.array(race[name]['frames']) for name in ('challenger', 'baseline')]
+            order = [0, 1]
+            colours = None
     model = visual_model(track, colours)
     data = mujoco.MjData(model)
     indices = []
@@ -184,7 +196,8 @@ def render(source, output, fps=24, field=False, poster=None):
     cam.azimuth = 135
     focus = entries[order[0]][0, 1:3].copy()
     output.parent.mkdir(parents=True, exist_ok=True)
-    duration = max(frames[-1, 0] for frames in entries)
+    finish = max(frames[-1, 0] for frames in entries)
+    duration = finish + (0.8 if solo else 0)
     with mujoco.Renderer(model, height=540, width=960) as renderer, imageio.get_writer(
             str(output), fps=fps, codec='libx264', macro_block_size=1, quality=None,
             ffmpeg_params=['-crf', '24', '-movflags', '+faststart']) as video:
@@ -226,6 +239,18 @@ def render(source, output, fps=24, field=False, poster=None):
             cam.lookat[:] = [*focus, .105]
             renderer.update_scene(data, camera=cam)
             frame = renderer.render()
+            if solo:
+                # The film holds the finish pose briefly; its clock stops at the
+                # recorded crossing time rather than including that final hold.
+                overlay = Image.fromarray(frame)
+                draw = ImageDraw.Draw(overlay)
+                draw.rounded_rectangle((18, 18, 330, 100), radius=9, fill=(24, 34, 39))
+                draw.text((32, 29), 'Microduck | re:Invent 2018', fill=(245, 242, 230),
+                          font=ImageFont.load_default(size=18))
+                clock = f'{min(t, finish):.2f} s'
+                draw.text((32, 60), clock + ('  FINISH' if t >= finish else ''), fill=(255, 206, 88),
+                          font=ImageFont.load_default(size=24))
+                frame = np.asarray(overlay)
             video.append_data(frame)
             if poster and i == round(min(duration * .7, 19.0) * fps):
                 Image.fromarray(frame).save(poster, quality=88, optimize=True)
@@ -236,6 +261,7 @@ if __name__ == '__main__':
     ap.add_argument('replay', type=Path, help='Replay JSON, or lineage/index.json for --field')
     ap.add_argument('output', type=Path, help='Output MP4')
     ap.add_argument('--field', action='store_true', help='Film all compatible archived runs together')
+    ap.add_argument('--solo', action='store_true', help='Film only the trained duck, with a lap clock')
     ap.add_argument('--poster', type=Path, help='Save a representative JPEG frame')
     args = ap.parse_args()
-    render(args.replay, args.output, field=args.field, poster=args.poster)
+    render(args.replay, args.output, field=args.field, poster=args.poster, solo=args.solo)

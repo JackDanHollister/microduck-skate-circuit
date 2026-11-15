@@ -143,9 +143,9 @@ class Driver:
         return cls([speed] * SECTORS, [0.0] * SECTORS, lookahead, gain)
 
     def __post_init__(self):
-        if len(self.speed) != len(self.offset) or len(self.speed) not in (6, 12):
+        if len(self.speed) != len(self.offset) or len(self.speed) not in (6, 12, 24):
             raise ValueError(
-                "Driver needs matching speed and offset lists for 6 or 12 sectors"
+                "Driver needs matching speed and offset lists for 6, 12 or 24 sectors"
             )
         if not np.isfinite(self.vector()).all() or self.lookahead <= 0:
             raise ValueError(
@@ -363,7 +363,7 @@ def main():
     parser.add_argument(
         "--sectors",
         type=int,
-        choices=[6, 12],
+        choices=[6, 12, 24],
         help="Number of speed and line control points",
     )
     parser.add_argument(
